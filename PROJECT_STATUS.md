@@ -28,7 +28,7 @@
 - [x] CURRENT_TASK.md created
 - [x] CHANGELOG.md created
 - [x] .gitignore added
-- [ ] Initial commit made
+- [x] Initial commit made (`8efb453`)
 - [ ] Phase 0 approved
 
 ---
