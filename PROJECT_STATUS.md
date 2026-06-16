@@ -65,7 +65,7 @@
 - [x] localStorage persistence via AppShell
   - First run: upload screen; subsequent runs: workspace with last report
   - New import replaces stored data in full; cancel returns to saved workspace
-- [ ] Row detail / notes panel
+- [x] Debtor detail slide-over panel (read-only; shows all 10 RivhitRow fields)
 
 ---
 

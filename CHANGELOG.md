@@ -11,6 +11,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.7.0] — 2026-06-16 — Debtor Detail Slide-Over Panel
+
+### Added
+- `src/types/collections.ts` — shared `AgingBand` and `EnrichedRow` types (extracted from CollectionsTable so DebtorPanel can import them without circular deps)
+- `src/components/DebtorPanel.tsx` — fixed-position right-side slide-over panel:
+  - Slides in with `translate-x-full → translate-x-0`, `duration-200`
+  - Sections: customer header + ✕ close button, balance & aging strip, document details grid (2-col), financial summary with highlighted יתרה footer
+  - Closes via ✕ button or Escape key
+  - Read-only; no notes/status/history
+  - `paidAmount` labelled as "סכום ששולם / נסגר"
+
+### Changed
+- `src/components/CollectionsTable.tsx`:
+  - Imports `AgingBand` and `EnrichedRow` from `@/types/collections`
+  - Adds `selectedRow: EnrichedRow | null` state and stable `closePanel` via `useCallback`
+  - Table rows: `cursor-pointer`, `bg-blue-50` highlight on selected row
+  - Renders `<DebtorPanel row={selectedRow} onClose={closePanel} />` at component root
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
 ## [0.6.0] — 2026-06-16 — Collections Work Table V1 with Persistence
 
 ### Added

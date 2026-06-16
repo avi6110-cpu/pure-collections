@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { RivhitRow } from "@/lib/parseRivhit";
+import type { AgingBand, EnrichedRow } from "@/types/collections";
+import { DebtorPanel } from "@/components/DebtorPanel";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -11,7 +13,7 @@ const ILS = new Intl.NumberFormat("he-IL", {
 });
 
 function fmtCurrency(n: number): string {
-  return "₪ " + ILS.format(n);
+  return "₪ " + ILS.format(n);
 }
 
 function fmtImportDate(ms: number): string {
@@ -22,8 +24,6 @@ function fmtImportDate(ms: number): string {
 }
 
 // ── Aging ───────────────────────────────────────────────────────────────────
-
-type AgingBand = "fresh" | "yellow" | "red";
 
 function computeAgeDays(documentDateMs: number): number {
   if (!documentDateMs) return 0;
@@ -41,6 +41,8 @@ const ROW_BG: Record<AgingBand, string> = {
   yellow: "bg-amber-50 hover:bg-amber-100",
   red:    "bg-red-50 hover:bg-red-100",
 };
+
+const ROW_BG_SELECTED = "bg-blue-50 hover:bg-blue-100";
 
 const AGE_BADGE: Record<AgingBand, string> = {
   fresh:  "bg-gray-100 text-gray-600",
@@ -60,7 +62,6 @@ type SortColumn =
 
 type SortDir = "asc" | "desc";
 
-// Which direction to apply on first click of a column
 const INITIAL_DIR: Record<SortColumn, SortDir> = {
   customerName:     "asc",
   remainingBalance: "desc",
@@ -69,8 +70,6 @@ const INITIAL_DIR: Record<SortColumn, SortDir> = {
   documentNumber:   "desc",
   documentDate:     "asc",
 };
-
-type EnrichedRow = RivhitRow & { ageDays: number; band: AgingBand };
 
 function sortRows(rows: EnrichedRow[], col: SortColumn, dir: SortDir): EnrichedRow[] {
   return [...rows].sort((a, b) => {
@@ -130,9 +129,12 @@ interface CollectionsTableProps {
 }
 
 export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsTableProps) {
-  const [query,   setQuery]   = useState("");
-  const [sortCol, setSortCol] = useState<SortColumn>("remainingBalance");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [query,       setQuery]       = useState("");
+  const [sortCol,     setSortCol]     = useState<SortColumn>("remainingBalance");
+  const [sortDir,     setSortDir]     = useState<SortDir>("desc");
+  const [selectedRow, setSelectedRow] = useState<EnrichedRow | null>(null);
+
+  const closePanel = useCallback(() => setSelectedRow(null), []);
 
   function handleSort(col: SortColumn) {
     if (col === sortCol) {
@@ -143,7 +145,6 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
     }
   }
 
-  // Enrich once
   const enriched: EnrichedRow[] = useMemo(
     () =>
       rows.map((r) => {
@@ -153,7 +154,6 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
     [rows]
   );
 
-  // Summary always reflects all rows, regardless of search filter
   const summary = useMemo(() => {
     let totalBalance  = 0;
     let balance30to60 = 0;
@@ -168,7 +168,6 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
     return { totalRows: enriched.length, totalBalance, balance30to60, balance60plus, count30to60, count60plus };
   }, [enriched]);
 
-  // Search → then sort
   const filtered: EnrichedRow[] = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return enriched;
@@ -195,9 +194,7 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
           <span className="text-sm text-gray-400">דוחות גבייה</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-xs text-gray-400">
-            עודכן: {fmtImportDate(importedAt)}
-          </span>
+          <span className="text-xs text-gray-400">עודכן: {fmtImportDate(importedAt)}</span>
           <button
             type="button"
             onClick={onNewImport}
@@ -215,24 +212,9 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
             value={fmtCurrency(summary.totalBalance)}
             sub={`${summary.totalRows} רשומות בדוח`}
           />
-          <SecondaryCard
-            label="60+ יום"
-            value={fmtCurrency(summary.balance60plus)}
-            count={summary.count60plus}
-            variant="red"
-          />
-          <SecondaryCard
-            label="30–60 יום"
-            value={fmtCurrency(summary.balance30to60)}
-            count={summary.count30to60}
-            variant="yellow"
-          />
-          <SecondaryCard
-            label="סה״כ רשומות"
-            value={String(summary.totalRows)}
-            count={summary.totalRows}
-            variant="neutral"
-          />
+          <SecondaryCard label="60+ יום"     value={fmtCurrency(summary.balance60plus)}  count={summary.count60plus}  variant="red"     />
+          <SecondaryCard label="30–60 יום"   value={fmtCurrency(summary.balance30to60)}  count={summary.count30to60}  variant="yellow"  />
+          <SecondaryCard label="סה״כ רשומות" value={String(summary.totalRows)}           count={summary.totalRows}    variant="neutral" />
         </div>
       </section>
 
@@ -259,57 +241,63 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
         <table className="min-w-full border-separate border-spacing-0 text-sm">
           <thead>
             <tr className="sticky top-0 z-10">
-              <Th col="customerName"     label="שם לקוח"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} wide />
-              <Th col="remainingBalance" label="יתרה לתשלום"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort} numeric />
-              <Th col="ageDays"          label="זמן חריגה"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} center />
-              <Th col="documentType"     label="מסמך"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="documentNumber"   label="מס׳ מסמך"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} numeric />
-              <Th col="documentDate"     label="תאריך מסמך"    sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <Th col="customerName"     label="שם לקוח"      sortCol={sortCol} sortDir={sortDir} onSort={handleSort} wide />
+              <Th col="remainingBalance" label="יתרה לתשלום"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort} numeric />
+              <Th col="ageDays"          label="זמן חריגה"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} center />
+              <Th col="documentType"     label="מסמך"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <Th col="documentNumber"   label="מס׳ מסמך"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} numeric />
+              <Th col="documentDate"     label="תאריך מסמך"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
             </tr>
           </thead>
           <tbody className="bg-white">
-            {displayed.map((row, i) => (
-              <tr
-                key={i}
-                className={`border-b border-gray-100 transition-colors ${ROW_BG[row.band]}`}
-              >
-                {/* שם לקוח */}
-                <td className="max-w-xs truncate whitespace-nowrap px-4 py-2.5 text-right font-medium text-gray-900">
-                  {row.customerName}
-                </td>
+            {displayed.map((row, i) => {
+              const isSelected = selectedRow?.documentNumber === row.documentNumber;
+              return (
+                <tr
+                  key={i}
+                  onClick={() => setSelectedRow(row)}
+                  className={`border-b border-gray-100 cursor-pointer transition-colors ${
+                    isSelected ? ROW_BG_SELECTED : ROW_BG[row.band]
+                  }`}
+                >
+                  {/* שם לקוח */}
+                  <td className="max-w-xs truncate whitespace-nowrap px-4 py-2.5 text-right font-medium text-gray-900">
+                    {row.customerName}
+                  </td>
 
-                {/* יתרה לתשלום — most prominent */}
-                <td className="whitespace-nowrap px-4 py-2.5 text-left">
-                  <span
-                    className={`text-base font-bold tabular-nums ${
-                      row.remainingBalance < 0
-                        ? "text-green-700"
-                        : row.band === "red"
-                        ? "text-red-700"
-                        : "text-gray-900"
-                    }`}
-                  >
-                    {fmtCurrency(row.remainingBalance)}
-                  </span>
-                </td>
+                  {/* יתרה לתשלום */}
+                  <td className="whitespace-nowrap px-4 py-2.5 text-left">
+                    <span
+                      className={`text-base font-bold tabular-nums ${
+                        row.remainingBalance < 0
+                          ? "text-green-700"
+                          : row.band === "red"
+                          ? "text-red-700"
+                          : "text-gray-900"
+                      }`}
+                    >
+                      {fmtCurrency(row.remainingBalance)}
+                    </span>
+                  </td>
 
-                {/* זמן חריגה */}
-                <td className="whitespace-nowrap px-4 py-2.5 text-center">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${AGE_BADGE[row.band]}`}>
-                    {row.ageDays} יום
-                  </span>
-                </td>
+                  {/* זמן חריגה */}
+                  <td className="whitespace-nowrap px-4 py-2.5 text-center">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${AGE_BADGE[row.band]}`}>
+                      {row.ageDays} יום
+                    </span>
+                  </td>
 
-                {/* מסמך */}
-                <Td>{row.documentType}</Td>
+                  {/* מסמך */}
+                  <Td>{row.documentType}</Td>
 
-                {/* מס׳ מסמך */}
-                <Td numeric>{row.documentNumber}</Td>
+                  {/* מס׳ מסמך */}
+                  <Td numeric>{row.documentNumber}</Td>
 
-                {/* תאריך מסמך */}
-                <Td>{row.documentDate}</Td>
-              </tr>
-            ))}
+                  {/* תאריך מסמך */}
+                  <Td>{row.documentDate}</Td>
+                </tr>
+              );
+            })}
 
             {displayed.length === 0 && (
               <tr>
@@ -321,6 +309,10 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
           </tbody>
         </table>
       </div>
+
+      {/* ── Debtor detail panel ──────────────────────────────────────────── */}
+      <DebtorPanel row={selectedRow} onClose={closePanel} />
+
     </div>
   );
 }

@@ -1,6 +1,6 @@
 # CURRENT TASK
 
-## Collections Work Table V1 (with Persistence) — Complete
+## Debtor Detail Panel — Complete
 
 **Status:** Complete
 **Completed:** 2026-06-16
