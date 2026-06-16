@@ -11,6 +11,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.3.0] — 2026-06-16 — Phase 0: App Foundation Scaffold
+
+### Added
+- Next.js 16.2.9, React 19, Tailwind v4, ESLint 9, TypeScript 5 (App Router, src/ layout)
+- `tsconfig.json`: strict mode + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes`
+- `src/app/layout.tsx`: RTL Hebrew root layout (`lang="he"`, `dir="rtl"`, system font)
+- `src/app/page.tsx`: בית (Home) placeholder
+- `src/app/work/page.tsx`: עבודה (Work) placeholder
+- `src/app/upload/page.tsx`: העלאת דוח (Upload Report) placeholder
+- `src/app/settings/page.tsx`: הגדרות (Settings) placeholder
+
+---
+
 ## [0.2.0] — 2026-06-16 — Phase 0: AI Collaboration Contract
 
 ### Added

@@ -11,8 +11,8 @@
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 0 | Repository Bootstrap | In Progress |
-| 1 | Next.js Scaffold | Not Started |
+| 0 | Repository Bootstrap | Complete |
+| 1 | Next.js Scaffold | Complete |
 | 2 | Core UI & Layout | Not Started |
 | 3 | Product Catalog | Not Started |
 | 4 | Cart & Checkout | Not Started |
