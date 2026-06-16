@@ -11,6 +11,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.4.0] — 2026-06-16 — Upload Screen Skeleton
+
+### Added
+- `src/components/UploadForm.tsx` — client component: `.xlsx`-only file picker,
+  20 MB size cap, shows filename + size, Hebrew error/success messages,
+  submit button disabled until valid file selected
+- `src/app/upload/page.tsx` — updated from placeholder to full upload screen
+
+---
+
 ## [0.3.1] — 2026-06-16 — Scaffold Verification Pass
 
 ### Verified
