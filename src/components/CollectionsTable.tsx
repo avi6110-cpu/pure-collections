@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { RivhitRow } from "@/lib/parseRivhit";
 import type { AgingBand, EnrichedRow } from "@/types/collections";
-import { DebtorPanel } from "@/components/DebtorPanel";
+import { CustomerPanel } from "@/components/CustomerPanel";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -184,6 +184,15 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
     [filtered, sortCol, sortDir]
   );
 
+  // All open documents for the currently selected customer
+  const customerRows: EnrichedRow[] = useMemo(
+    () =>
+      selectedRow
+        ? enriched.filter((r) => r.customerName === selectedRow.customerName)
+        : [],
+    [enriched, selectedRow]
+  );
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
 
@@ -255,7 +264,11 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
               return (
                 <tr
                   key={i}
-                  onClick={() => setSelectedRow(row)}
+                  onClick={() =>
+                    setSelectedRow((prev) =>
+                      prev?.documentNumber === row.documentNumber ? null : row
+                    )
+                  }
                   className={`border-b border-gray-100 cursor-pointer transition-colors ${
                     isSelected ? ROW_BG_SELECTED : ROW_BG[row.band]
                   }`}
@@ -310,8 +323,12 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
         </table>
       </div>
 
-      {/* ── Debtor detail panel ──────────────────────────────────────────── */}
-      <DebtorPanel row={selectedRow} onClose={closePanel} />
+      {/* ── Customer detail panel ────────────────────────────────────────── */}
+      <CustomerPanel
+        customerRows={customerRows}
+        clickedRow={selectedRow}
+        onClose={closePanel}
+      />
 
     </div>
   );

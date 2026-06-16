@@ -11,6 +11,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.8.0] — 2026-06-16 — Customer Detail Panel
+
+### Added
+- `src/components/CustomerPanel.tsx` — customer-scoped slide-over panel:
+  - Header: customer name + ✕ close button (Escape key also closes)
+  - 2×2 summary grid: total open balance, open document count, max overdue days, 60+ balance
+  - Scrollable document list sorted by `ageDays` descending (most overdue first)
+  - Each document shown as a card: type · number, balance, dates, aging badge
+  - Aging band colours on cards (amber/red); blue highlight on the clicked document
+  - Clicking the same row a second time closes the panel
+
+### Changed
+- `src/components/CollectionsTable.tsx`:
+  - Adds `customerRows` memo — filters all enriched rows by `selectedRow.customerName`
+  - Row click toggles panel (clicking selected row closes it)
+  - Passes `customerRows`, `clickedRow`, `onClose` to `CustomerPanel`
+
+### Removed
+- `src/components/DebtorPanel.tsx` — replaced by `CustomerPanel`; product concept changed from single-document to customer-scoped detail
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
 ## [0.7.0] — 2026-06-16 — Debtor Detail Slide-Over Panel
 
 ### Added

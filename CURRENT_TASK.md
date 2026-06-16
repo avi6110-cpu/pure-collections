@@ -1,6 +1,6 @@
 # CURRENT TASK
 
-## Debtor Detail Panel — Complete
+## Customer Detail Panel — Complete
 
 **Status:** Complete
 **Completed:** 2026-06-16
