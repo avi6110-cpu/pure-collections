@@ -1,8 +1,8 @@
 # CURRENT TASK
 
-## Phase 0 — Task 1: Repository Bootstrap
+## Upload Screen Skeleton
 
-**Status:** Complete
+**Status:** In Progress
 **Started:** 2026-06-16
 **Assigned to:** Claude Code
 
@@ -10,29 +10,32 @@
 
 ## Objective
 
-Initialize the PURE COLLECTIONS repository with foundational documentation and git setup. No application code, packages, or framework scaffolding in this task.
+Implement a basic file-upload UI on `/upload`. Client-side only.
+Allow selecting an `.xlsx` file, show file name and size, and validate the selection.
+No file parsing, no database, no Prisma, no auth.
 
 ---
 
 ## Completed Steps
 
-1. [x] `git init` — repository initialized
-2. [x] `README.md` — project overview and roadmap
-3. [x] `PROJECT_STATUS.md` — phase tracker and decisions log
-4. [x] `CURRENT_TASK.md` — this file
-5. [x] `CHANGELOG.md` — version history starting point
-6. [x] `.gitignore` — standard Next.js / Node ignores
+1. [x] Scaffold verification passed (all routes 200, lint clean, build clean)
+2. [ ] Create `src/components/UploadForm.tsx` — client component
+3. [ ] Update `src/app/upload/page.tsx` — import UploadForm
+4. [ ] lint + build pass
+5. [ ] Commit
 
 ---
 
-## Pending
+## Validation Rules
 
-- [ ] User approval
-- [ ] Initial commit
+- File extension must be `.xlsx`
+- File size must be ≤ 20 MB
+- Show error message in Hebrew if invalid
+- Show success state and file details if valid
 
----
+## Constraints
 
-## Next Task (Phase 0 — Task 2)
-
-> To be defined after approval of Task 1.
-> Expected: Next.js scaffold with TypeScript + Tailwind.
+- No xlsx parsing
+- No server actions
+- No API routes
+- No database

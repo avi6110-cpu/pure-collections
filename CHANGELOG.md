@@ -11,6 +11,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.3.1] — 2026-06-16 — Scaffold Verification Pass
+
+### Verified
+- All four routes (`/`, `/work`, `/upload`, `/settings`) return HTTP 200
+- `npm run lint` — clean, zero warnings
+- `npm run build` — clean, all pages compile as static, zero warnings
+- Hebrew RTL content renders correctly in browser
+
+---
+
 ## [0.3.0] — 2026-06-16 — Phase 0: App Foundation Scaffold
 
 ### Added
