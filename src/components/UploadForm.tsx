@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { extractRivhitRows } from "@/lib/parseRivhit";
 import type { RivhitRow } from "@/lib/parseRivhit";
-import { ImportTable } from "@/components/ImportTable";
+import { CollectionsTable } from "@/components/CollectionsTable";
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
@@ -150,7 +150,7 @@ export function UploadForm() {
 
       {/* Results table */}
       {parseState.status === "done" && (
-        <ImportTable rows={parseState.rows} />
+        <CollectionsTable rows={parseState.rows} />
       )}
     </div>
   );
