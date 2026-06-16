@@ -11,6 +11,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.6.0] — 2026-06-16 — Collections Work Table V1 with Persistence
+
+### Added
+- `src/components/AppShell.tsx` — top-level state owner:
+  - Reads `localStorage` key `pure-collections:report` on mount via `startTransition`
+  - `loading` → `upload` (first run) or `workspace` (returning user)
+  - `handleImport`: writes new report to localStorage, transitions to workspace
+  - `handleRequestNewImport`: switches to upload without clearing localStorage
+  - `handleCancelUpload`: reads saved report back, returns to workspace
+- "→ חזרה לרשומות" link in `UploadForm` when `onCancel` prop is provided
+
+### Changed
+- `src/app/upload/page.tsx` — renders `<AppShell />` (replaces `<UploadForm />`)
+- `src/components/UploadForm.tsx` — pure upload UI: accepts `onImport` + optional `onCancel`; no longer owns workspace state
+- `src/components/CollectionsTable.tsx`:
+  - Removed Due Date column (field retained in `RivhitRow` for future detail view)
+  - Removed Reference column (field retained in `RivhitRow` for future detail view)
+  - Renamed "גיל חוב" → "זמן חריגה"
+  - Sort on all 6 visible columns: שם לקוח, יתרה לתשלום, זמן חריגה, מסמך, מס׳ מסמך, תאריך מסמך
+  - Column header click toggles asc/desc; active column shows ↑/↓ in blue
+  - Accepts `importedAt: number` prop; renders "עודכן: …" timestamp in top bar
+  - Prop renamed: `onReset` → `onNewImport`
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
+## [0.5.0] — 2026-06-16 — Collections Work Table V1
+
+### Changed
+- `src/app/upload/page.tsx` — simplified to bare `<UploadForm />` (removed `max-w-xl` wrapper)
+- `src/components/UploadForm.tsx` — dual-mode layout:
+  - Upload mode: centered card (idle / parsing / error)
+  - Workspace mode: renders `<CollectionsTable rows onReset>` directly, covering full screen
+  - "ייבוא הקובץ" button label stays in upload mode; workspace gets its own "ייבוא דוח חדש" button
+- `src/components/CollectionsTable.tsx` — full workspace redesign:
+  - Full-screen layout: `h-screen flex-col`, table fills remaining height with sticky header
+  - Column order: שם לקוח, יתרה לתשלום, גיל חוב, מסמך, מס׳ מסמך, אסמכתא, תאריך מסמך, תאריך פרעון
+  - Remaining Balance: `text-base font-bold`, colored red (60+ band or negative), green (credit)
+  - Aging badges: gray <30d, amber 30–60d, red 60+d
+  - Summary cards: Primary blue card = יתרה לגבייה מיידית (total), plus 60+d / 30–60d / total rows
+  - New `onReset` prop — top-bar "ייבוא דוח חדש" button triggers reset to upload mode
+  - Source data fidelity preserved: no merging, no hiding, no modification
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
 ## [0.4.1] — 2026-06-16 — Import Engine V0 Confirmation Pass
 
 ### Verified (no code changes)
