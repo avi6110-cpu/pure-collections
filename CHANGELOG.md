@@ -11,6 +11,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.4.1] — 2026-06-16 — Import Engine V0 Confirmation Pass
+
+### Verified (no code changes)
+- Canonical file confirmed: `דוח גבייה דוגמה.xlsx` (727 rows, 2 sheets)
+- Active sheet: `מסמכים לתשלום`; `גיליון1` unused
+- Header row at index 8; repeats 37× across month sections
+- All 9 column positions confirmed correct (no drift)
+- Data-row filter (`col[7]` is numeric) yields exactly 492 rows, 0 false positives
+- Non-data rows (blanks, month headers, repeated header rows, subtotals) all excluded
+- 222 credit note rows (`חשבונית מס זיכוי`), negative totals handled correctly
+- 0 rows with missing dates, names, document types, or document numbers
+- `npm run lint` clean; `npm run build` clean
+
+---
+
 ## [0.4.0] — 2026-06-16 — Upload Screen Skeleton
 
 ### Added

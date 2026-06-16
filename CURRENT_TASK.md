@@ -1,41 +1,43 @@
 # CURRENT TASK
 
-## Upload Screen Skeleton
+## Import Engine V0 — Confirmation Pass
 
 **Status:** Complete
-**Started:** 2026-06-16
+**Completed:** 2026-06-16
 **Assigned to:** Claude Code
 
 ---
 
 ## Objective
 
-Implement a basic file-upload UI on `/upload`. Client-side only.
-Allow selecting an `.xlsx` file, show file name and size, and validate the selection.
-No file parsing, no database, no Prisma, no auth.
+Confirm that the Import Engine V0 (commit `5887dfd`) is correctly built against
+the canonical Rivhit file `דוח גבייה דוגמה.xlsx`. No code changes unless a real
+mismatch was found.
 
 ---
 
-## Completed Steps
+## Confirmation Results
 
-1. [x] Scaffold verification passed (all routes 200, lint clean, build clean)
-2. [ ] Create `src/components/UploadForm.tsx` — client component
-3. [ ] Update `src/app/upload/page.tsx` — import UploadForm
-4. [ ] lint + build pass
-5. [ ] Commit
+| Check | Result |
+|-------|--------|
+| Worksheets | `מסמכים לתשלום` (active), `גיליון1` (unused) |
+| Header row | Row index 8 — all 9 mapped columns confirmed ✓ |
+| Column mapping | ALL MATCH — no drift from parser code ✓ |
+| Data-row filter | `typeof col[7] === 'number'` → 492 rows, 0 false positives ✓ |
+| Non-data rows | Blanks / month hdrs / repeated headers / subtotals all excluded ✓ |
+| Credit notes | 222 rows of type `חשבונית מס זיכוי`, negative totals handled ✓ |
+| Date serials | All 492 rows have valid serials → `he-IL` dates (0 missing) ✓ |
+| Output sanity | 0 missing names, 0 zero doc-numbers, 0 missing types or dates ✓ |
+| `npm run lint` | Clean ✓ |
+| `npm run build` | Clean, all pages static ✓ |
+
+**Verdict: parser confirmed correct. No changes to application code.**
 
 ---
 
-## Validation Rules
+## Next Task
 
-- File extension must be `.xlsx`
-- File size must be ≤ 20 MB
-- Show error message in Hebrew if invalid
-- Show success state and file details if valid
-
-## Constraints
-
-- No xlsx parsing
-- No server actions
-- No API routes
-- No database
+To be defined. Candidates:
+- UI polish for ImportTable (column widths, sticky header, row striping)
+- Summary row (totals bar below the table)
+- Route navigation / sidebar layout

@@ -13,7 +13,7 @@
 |-------|------|--------|
 | 0 | Repository Bootstrap | Complete |
 | 1 | Next.js Scaffold + Verification | Complete |
-| 2 | Upload Screen Skeleton | In Progress |
+| 2 | Import Engine V0 | Complete |
 | 3 | Core UI & Layout | Not Started |
 | 4 | Business Logic & Data | Not Started |
 | 5 | Launch | Not Started |
