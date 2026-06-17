@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import type { RivhitRow } from "@/lib/parseRivhit";
 import type { AgingBand, EnrichedRow } from "@/types/collections";
 import type { ContactMap, CustomerContact } from "@/types/contacts";
@@ -307,6 +308,12 @@ export function CollectionsTable({
         </div>
         <div className="flex items-center gap-4">
           <span className="text-xs text-gray-400">עודכן: {fmtImportDate(importedAt)}</span>
+          <Link
+            href="/settings"
+            className="text-sm text-gray-400 hover:text-gray-600"
+          >
+            הגדרות
+          </Link>
           <button
             type="button"
             onClick={onNewImport}
