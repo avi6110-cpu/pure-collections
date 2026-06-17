@@ -1,6 +1,6 @@
 # CURRENT TASK
 
-## Refined Statuses + Expected Payment Date — Complete
+## Document Selection for Communication Drafts — Complete
 
 **Status:** Complete
 **Completed:** 2026-06-17

@@ -11,6 +11,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.13.0] — 2026-06-17 — Document Selection for Communication Drafts
+
+### Added
+- `docKey(doc)` helper — composite key `documentType|documentNumber|documentDate`; prevents collisions when different document types share a number
+- `selectedDocs: Set<string>` state in `CustomerPanel` — resets via `useEffect` (with `startTransition`) whenever `customerName` or `customerRows` changes
+- Per-document checkboxes in the document list — `<label>` wrapper makes the entire card row clickable; unchecked cards rendered at `opacity-40`
+- Selection controls in document list header: "N ייכללו · בחר הכל · נקה"
+- `selectAll` / `deselectAll` / `toggleDoc` functions
+- `selectedRows` memo — filters `customerRows` to checked keys; passed to `CommunicationSection` in place of `customerRows`
+
+### Changed
+- `CommunicationSection` — receives `selectedRows` instead of `customerRows`; WhatsApp and Email buttons disabled when `selectedRows.length === 0`; tooltip priority: "לא נבחרו מסמכים לשליחה" (no selection) takes precedence over "הוסף טלפון/אימייל" (missing contact)
+- `buildWhatsAppMessage` — removed `WA_DOC_LIMIT = 10` cap and "ועוד N מסמכים נוספים" line; message is built from whatever rows the caller passes
+- Default selection: `ageDays >= 30` (yellow + red bands) selected; `ageDays < 30` (fresh) unselected
+- React key on `DocCard` changed from `doc.documentNumber` to `docKey(doc)` for correctness
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
 ## [0.12.0] — 2026-06-17 — Refined Statuses + Expected Payment Date
 
 ### Changed

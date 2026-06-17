@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import type { EnrichedRow } from "@/types/collections";
 import type { CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, CustomerStatus } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityEntry, ActivityType } from "@/types/activity";
+
+// ── Document key ─────────────────────────────────────────────────────────────
+// Composite key — different document types can share a number, so use all three fields.
+function docKey(doc: EnrichedRow): string {
+  return `${doc.documentType}|${doc.documentNumber}|${doc.documentDate}`;
+}
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -27,8 +33,6 @@ function fmtEntryTime(ms: number): string {
 
 // ── Communication helpers ────────────────────────────────────────────────────
 
-const WA_DOC_LIMIT = 10;
-
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.startsWith("972")) return digits;
@@ -36,16 +40,14 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+// Builds a WhatsApp draft from the caller-supplied rows (already filtered to selection)
 function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[]): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
-  const shown  = sorted.slice(0, WA_DOC_LIMIT);
-  const hidden = sorted.length - shown.length;
 
-  const docLines = shown.map(
+  const docLines = sorted.map(
     (r) => `• ${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} (${r.ageDays} יום)`
   );
-  if (hidden > 0) docLines.push(`• ועוד ${hidden} מסמכים נוספים`);
 
   return [
     `שלום ${customerName},`,
@@ -131,7 +133,6 @@ const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }
   },
 };
 
-// Activity timeline markers and colors
 const ACTIVITY_ICON: Record<ActivityType, string> = {
   status_changed:  "◎",
   whatsapp_opened: "W",
@@ -149,16 +150,16 @@ const ACTIVITY_COLOR: Record<ActivityType, string> = {
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface CustomerPanelProps {
-  customerRows:    EnrichedRow[];
-  clickedRow:      EnrichedRow | null;
-  onClose:         () => void;
-  contact:         CustomerContact | undefined;
-  onSaveContact:   (customerName: string, contact: CustomerContact) => void;
+  customerRows:       EnrichedRow[];
+  clickedRow:         EnrichedRow | null;
+  onClose:            () => void;
+  contact:            CustomerContact | undefined;
+  onSaveContact:      (customerName: string, contact: CustomerContact) => void;
   status:             CustomerStatus | undefined;
   onSaveStatus:       (customerName: string, status: CollectionStatus) => void;
   onSaveExpectedDate: (customerName: string, date: string | undefined) => void;
   activityEntries:    ActivityEntry[];
-  onAddActivity:   (customerName: string, type: ActivityType, text: string) => void;
+  onAddActivity:      (customerName: string, type: ActivityType, text: string) => void;
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -185,7 +186,44 @@ export function CustomerPanel({
     return () => document.removeEventListener("keydown", handleKey);
   }, [clickedRow, onClose]);
 
-  const customerName  = clickedRow?.customerName ?? "";
+  // ── Document selection state ───────────────────────────────────────────────
+  // Default: documents ≥ 30 days overdue are selected; fresh (<30d) are not.
+  // Resets whenever the customer changes (customerName "" = panel closed).
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+
+  const customerName = clickedRow?.customerName ?? "";
+
+  useEffect(() => {
+    const defaults = new Set(customerRows.filter((r) => r.ageDays >= 30).map(docKey));
+    startTransition(() => setSelectedDocs(defaults));
+  }, [customerName, customerRows]);
+
+  // Rows currently checked — passed to message builders
+  const selectedRows = useMemo(
+    () => customerRows.filter((r) => selectedDocs.has(docKey(r))),
+    [customerRows, selectedDocs]
+  );
+
+  function toggleDoc(doc: EnrichedRow) {
+    const key = docKey(doc);
+    setSelectedDocs((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedDocs(new Set(customerRows.map(docKey)));
+  }
+
+  function deselectAll() {
+    setSelectedDocs(new Set());
+  }
+
+  // ── Derived values ────────────────────────────────────────────────────────
+
   const totalBalance  = customerRows.reduce((s, r) => s + r.remainingBalance, 0);
   const docCount      = customerRows.length;
   const maxAgeDays    = customerRows.reduce((m, r) => Math.max(m, r.ageDays), 0);
@@ -242,10 +280,10 @@ export function CustomerPanel({
             onSaveContact={onSaveContact}
           />
 
-          {/* ── Communication actions ────────────────────────────────────── */}
+          {/* ── Communication actions ─────────────────────────────────────── */}
           <CommunicationSection
             customerName={customerName}
-            customerRows={customerRows}
+            selectedRows={selectedRows}
             contact={contact}
             onAddActivity={onAddActivity}
           />
@@ -266,15 +304,25 @@ export function CustomerPanel({
 
           {/* ── Document list ────────────────────────────────────────────── */}
           <div className="flex-1 overflow-y-auto px-5 py-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              {docCount === 1 ? "מסמך פתוח אחד" : `${docCount} מסמכים פתוחים`}
-            </p>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                {docCount === 1 ? "מסמך פתוח אחד" : `${docCount} מסמכים פתוחים`}
+              </p>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-gray-400">{selectedRows.length} ייכללו</span>
+                <span className="text-gray-300">·</span>
+                <button type="button" onClick={selectAll}  className="text-blue-600 hover:text-blue-800">בחר הכל</button>
+                <button type="button" onClick={deselectAll} className="text-gray-500 hover:text-gray-700">נקה</button>
+              </div>
+            </div>
             <div className="space-y-2">
               {sortedDocs.map((doc) => (
                 <DocCard
-                  key={doc.documentNumber}
+                  key={docKey(doc)}
                   doc={doc}
                   isClicked={doc.documentNumber === clickedRow.documentNumber}
+                  isSelected={selectedDocs.has(docKey(doc))}
+                  onToggle={() => toggleDoc(doc)}
                 />
               ))}
             </div>
@@ -349,53 +397,63 @@ function StatusSection({ customerName, status, onSaveStatus, onSaveExpectedDate 
 
 interface CommunicationSectionProps {
   customerName:  string;
-  customerRows:  EnrichedRow[];
+  selectedRows:  EnrichedRow[]; // only the documents checked for inclusion
   contact:       CustomerContact | undefined;
   onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
 }
 
-function CommunicationSection({ customerName, customerRows, contact, onAddActivity }: CommunicationSectionProps) {
-  const phone = contact?.phone;
-  const email = contact?.email;
+function CommunicationSection({ customerName, selectedRows, contact, onAddActivity }: CommunicationSectionProps) {
+  const phone      = contact?.phone;
+  const email      = contact?.email;
+  const noSelected = selectedRows.length === 0;
+
+  const waDisabled = !phone || noSelected;
+  const emDisabled = !email || noSelected;
+
+  const waTitle = noSelected
+    ? "לא נבחרו מסמכים לשליחה"
+    : !phone
+    ? "הוסף טלפון בפרטי הקשר"
+    : undefined;
+
+  const emTitle = noSelected
+    ? "לא נבחרו מסמכים לשליחה"
+    : !email
+    ? "הוסף אימייל בפרטי הקשר"
+    : undefined;
 
   function handleWhatsApp() {
-    if (!phone) return;
-    const msg = buildWhatsAppMessage(customerName, customerRows);
+    if (!phone || noSelected) return;
+    const msg = buildWhatsAppMessage(customerName, selectedRows);
     const url = `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank", "noopener,noreferrer");
     onAddActivity(customerName, "whatsapp_opened", "טיוטת WhatsApp נפתחה");
   }
 
   function handleEmail() {
-    if (!email) return;
-    window.location.href = buildEmailUrl(email, customerName, customerRows);
+    if (!email || noSelected) return;
+    window.location.href = buildEmailUrl(email, customerName, selectedRows);
     onAddActivity(customerName, "email_opened", "טיוטת אימייל נפתחה");
   }
 
   return (
     <div className="shrink-0 border-b border-gray-200 px-5 py-3">
       <div className="flex gap-3">
-        <div
-          className="flex-1"
-          {...(!phone ? { title: "הוסף טלפון בפרטי הקשר" } : {})}
-        >
+        <div className="flex-1" {...(waTitle ? { title: waTitle } : {})}>
           <button
             type="button"
             onClick={handleWhatsApp}
-            disabled={!phone}
+            disabled={waDisabled}
             className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             WhatsApp
           </button>
         </div>
-        <div
-          className="flex-1"
-          {...(!email ? { title: "הוסף אימייל בפרטי הקשר" } : {})}
-        >
+        <div className="flex-1" {...(emTitle ? { title: emTitle } : {})}>
           <button
             type="button"
             onClick={handleEmail}
-            disabled={!email}
+            disabled={emDisabled}
             className="w-full rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
             אימייל
@@ -532,7 +590,6 @@ function ActivitySection({ customerName, entries, onAddActivity }: ActivitySecti
     setNote("");
   }
 
-  // Newest first
   const displayed = [...entries].reverse();
 
   return (
@@ -541,7 +598,6 @@ function ActivitySection({ customerName, entries, onAddActivity }: ActivitySecti
         יומן פעילות
       </p>
 
-      {/* Manual note input */}
       <div className="mb-3 flex gap-2">
         <input
           type="text"
@@ -561,7 +617,6 @@ function ActivitySection({ customerName, entries, onAddActivity }: ActivitySecti
         </button>
       </div>
 
-      {/* Entry list */}
       {displayed.length === 0 ? (
         <p className="text-xs italic text-gray-400">אין פעילות מתועדת עדיין</p>
       ) : (
@@ -633,34 +688,45 @@ function SummaryItem({ label, value, size, variant }: SummaryItemProps) {
 }
 
 interface DocCardProps {
-  doc: EnrichedRow; isClicked: boolean;
+  doc:        EnrichedRow;
+  isClicked:  boolean;
+  isSelected: boolean;
+  onToggle:   () => void;
 }
 
-function DocCard({ doc, isClicked }: DocCardProps) {
+function DocCard({ doc, isClicked, isSelected, onToggle }: DocCardProps) {
   const cardBg      = isClicked ? "border-blue-300 bg-blue-50" : CARD_BG[doc.band];
   const balanceColor = doc.remainingBalance < 0 ? "text-green-700" : doc.band === "red" ? "text-red-700" : "text-gray-900";
 
   return (
-    <div className={`rounded-lg border px-4 py-3 ${cardBg}`}>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-right text-sm font-semibold text-gray-900">
-          {doc.documentType}
-          <span className="mx-1 text-gray-300">·</span>
-          <span className="font-normal tabular-nums text-gray-600">{doc.documentNumber}</span>
-        </p>
-        <p className={`shrink-0 text-left text-sm font-bold tabular-nums ${balanceColor}`}>
-          {fmtCurrency(doc.remainingBalance)}
-        </p>
+    <label className="flex cursor-pointer items-start gap-2">
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={onToggle}
+        className="mt-[14px] h-4 w-4 shrink-0 accent-indigo-600"
+      />
+      <div className={`flex-1 rounded-lg border px-4 py-3 transition-opacity ${cardBg} ${!isSelected ? "opacity-40" : ""}`}>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-right text-sm font-semibold text-gray-900">
+            {doc.documentType}
+            <span className="mx-1 text-gray-300">·</span>
+            <span className="font-normal tabular-nums text-gray-600">{doc.documentNumber}</span>
+          </p>
+          <p className={`shrink-0 text-left text-sm font-bold tabular-nums ${balanceColor}`}>
+            {fmtCurrency(doc.remainingBalance)}
+          </p>
+        </div>
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p className="text-right text-xs text-gray-500">
+            {doc.documentDate}
+            {doc.dueDate !== "" && <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>}
+          </p>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}>
+            {doc.ageDays} יום
+          </span>
+        </div>
       </div>
-      <div className="mt-1.5 flex items-center justify-between gap-2">
-        <p className="text-right text-xs text-gray-500">
-          {doc.documentDate}
-          {doc.dueDate !== "" && <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>}
-        </p>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}>
-          {doc.ageDays} יום
-        </span>
-      </div>
-    </div>
+    </label>
   );
 }
