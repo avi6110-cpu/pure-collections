@@ -66,6 +66,10 @@
   - First run: upload screen; subsequent runs: workspace with last report
   - New import replaces stored data in full; cancel returns to saved workspace
 - [x] Customer detail slide-over panel — all open documents per customer, summary + doc list, aging highlights
+- [x] Customer contacts (phone, email, contact person, notes) — persisted in separate localStorage key, survive report imports
+- [x] KPI card filters — click red/yellow card to filter table by aging band; AND-logic with search; cards always show full-report totals
+- [x] Customer collection status (לא טופל / בטיפול / הבטיח לשלם / מועמד לתשלום / שולם) — per-customer, separate localStorage key, survives imports; status pills in panel + filter chips in workspace + row border indicator
+- [x] Customer activity timeline — per-customer log (status changes, WhatsApp/email opens, manual notes); `pure-collections:activity` key; newest-first display; icon + timestamp per entry; survives imports
 
 ---
 

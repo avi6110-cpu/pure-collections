@@ -11,6 +11,83 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.11.0] — 2026-06-17 — Customer Activity Timeline
+
+### Added
+- `src/types/activity.ts` — `ActivityType` union (`status_changed | whatsapp_opened | email_opened | manual_note`), `ActivityEntry` interface (`id, type, text, createdAt`), `ActivityLog = Record<string, ActivityEntry[]>`
+- `pure-collections:activity` localStorage key — separate from report/contacts/status; never overwritten on import
+- Automatic activity entries:
+  - Status change → `סטטוס שונה מ"X" ל"Y"` (old + new status, skipped when status is set to the same value)
+  - WhatsApp draft open → `טיוטת WhatsApp נפתחה`
+  - Email draft open → `טיוטת אימייל נפתחה`
+- `ActivitySection` in `CustomerPanel` — note input with "הוסף" / Enter, entries shown newest-first, per-type icon (◎ W @ •) + color, he-IL short timestamp, `max-h-40` scroll, empty state text
+- `handleAddActivity(customerName, type, text)` in `AppShell` for external callers
+
+### Changed
+- `AppShell.tsx` — 6-field workspace state adds `activityLog`; `handleSaveStatus` inlines activity entry to avoid stale-closure conflict (single `setState` updates both `statuses` and `activityLog`); all import/cancel paths read all 4 localStorage keys; passes `activityLog` + `onAddActivity` to `CollectionsTable`
+- `CollectionsTable.tsx` — `activityLog` + `onAddActivity` props; `customerActivity` memo per selected customer; both passed to `CustomerPanel`
+- `CustomerPanel.tsx` — `activityEntries` + `onAddActivity` props; `CommunicationSection` calls `onAddActivity` after WhatsApp/email opens; `ActivitySection` added after document list; `key={customerName}` resets note input on customer switch
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
+## [0.10.0] — 2026-06-17 — Customer Collection Status
+
+### Added
+- `src/types/status.ts` — `CollectionStatus` union (5 statuses), `ALL_STATUSES` constant, `CustomerStatus` interface, `StatusMap`
+- `StatusSection` in `CustomerPanel` — 5 colored pill buttons, one-click saves, purely controlled (no edit-mode toggle); `STATUS_PILL` map with active (solid fill) and inactive (tinted border) styles
+- Status filter chip strip in `CollectionsTable` search section (always visible row 2); toggle on click; `STATUS_CHIP_ACTIVE` color map
+- 4px colored right border on שם לקוח cell per row, reflecting customer status at a glance (`STATUS_ROW_BORDER` map; empty for לא טופל)
+- `pure-collections:status` localStorage key with `readStatuses()` / `writeStatuses()` in AppShell
+
+### Changed
+- `AppShell.tsx` — `statuses: StatusMap` added to workspace state; `handleImport` never writes status key; new `handleSaveStatus(customerName, status)` handler; all workspace setState calls carry 5 fields
+- `CollectionsTable.tsx` — `statusFiltered` memo between band and search filters; `"לא טופל"` filter matches both explicit and undefined entries; `customerStatus` computed and passed to panel; "נקה הכל" resets both filters
+- Filter pipeline: enriched → bandFiltered → statusFiltered → searched → sorted (AND logic throughout)
+- KPI totals still computed from full `enriched` set — unaffected by any filter
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
+## [0.9.0] — 2026-06-17 — Customer Contacts + KPI Filters
+
+### Added
+- `src/types/contacts.ts` — `CustomerContact` interface (contactPerson, phone, email, notes, updatedAt) and `ContactMap = Record<string, CustomerContact>`
+- `ContactSection` in `CustomerPanel` — view + edit modes for customer contact data:
+  - View mode: shows saved fields, "עריכה" / "+ הוסף" button
+  - Edit mode: 4 inputs + textarea for notes, שמור / ביטול buttons
+  - `key={customerName}` on component causes automatic state reset when customer changes
+  - `startEdit()` re-initializes draft from current prop so re-edit always reflects latest save
+- KPI card filters in `CollectionsTable`:
+  - Red card → filter to 60+ day rows; yellow card → 30–60 day rows; primary/neutral → reset
+  - Toggle behavior: clicking an active filter resets to "all"
+  - Active filter pill in search bar row with ✕ to clear
+  - AND logic: band filter + search filter combined
+  - Summary cards always reflect full unfiltered report totals
+
+### Changed
+- `AppShell.tsx`:
+  - New `pure-collections:contacts` localStorage key with `readContacts()` / `writeContacts()`
+  - `contacts: ContactMap` added to workspace state
+  - `handleImport` never touches the contacts key — data persists across report imports
+  - New `handleSaveContact(customerName, contact)` — merges one entry, writes contacts key only
+- `CollectionsTable.tsx`:
+  - Accepts `contacts: ContactMap` and `onSaveContact` props
+  - Computes `customerContact` for selected customer and passes to `CustomerPanel`
+  - Count display shows band-scoped total when filter is active
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
 ## [0.8.0] — 2026-06-16 — Customer Detail Panel
 
 ### Added

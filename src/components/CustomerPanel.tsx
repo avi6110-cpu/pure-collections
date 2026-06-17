@@ -5,6 +5,7 @@ import type { EnrichedRow } from "@/types/collections";
 import type { CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, CustomerStatus } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
+import type { ActivityEntry, ActivityType } from "@/types/activity";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -15,6 +16,13 @@ const ILS = new Intl.NumberFormat("he-IL", {
 
 function fmtCurrency(n: number): string {
   return "₪ " + ILS.format(n);
+}
+
+function fmtEntryTime(ms: number): string {
+  return new Date(ms).toLocaleString("he-IL", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 }
 
 // ── Communication helpers ────────────────────────────────────────────────────
@@ -100,7 +108,6 @@ const CARD_BG: Record<EnrichedRow["band"], string> = {
   red:    "bg-red-50 border-red-200",
 };
 
-// Status pill styles: active = solid fill, inactive = tinted border
 const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }> = {
   "לא טופל":      {
     active:   "bg-gray-500 text-white border border-gray-500",
@@ -124,16 +131,33 @@ const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }
   },
 };
 
+// Activity timeline markers and colors
+const ACTIVITY_ICON: Record<ActivityType, string> = {
+  status_changed:  "◎",
+  whatsapp_opened: "W",
+  email_opened:    "@",
+  manual_note:     "•",
+};
+
+const ACTIVITY_COLOR: Record<ActivityType, string> = {
+  status_changed:  "text-blue-500",
+  whatsapp_opened: "text-green-600",
+  email_opened:    "text-gray-500",
+  manual_note:     "text-amber-500",
+};
+
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface CustomerPanelProps {
-  customerRows:  EnrichedRow[];
-  clickedRow:    EnrichedRow | null;
-  onClose:       () => void;
-  contact:       CustomerContact | undefined;
-  onSaveContact: (customerName: string, contact: CustomerContact) => void;
-  status:        CustomerStatus | undefined;
-  onSaveStatus:  (customerName: string, status: CollectionStatus) => void;
+  customerRows:    EnrichedRow[];
+  clickedRow:      EnrichedRow | null;
+  onClose:         () => void;
+  contact:         CustomerContact | undefined;
+  onSaveContact:   (customerName: string, contact: CustomerContact) => void;
+  status:          CustomerStatus | undefined;
+  onSaveStatus:    (customerName: string, status: CollectionStatus) => void;
+  activityEntries: ActivityEntry[];
+  onAddActivity:   (customerName: string, type: ActivityType, text: string) => void;
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -146,6 +170,8 @@ export function CustomerPanel({
   onSaveContact,
   status,
   onSaveStatus,
+  activityEntries,
+  onAddActivity,
 }: CustomerPanelProps) {
   // Close on Escape — only while panel is open
   useEffect(() => {
@@ -157,7 +183,6 @@ export function CustomerPanel({
     return () => document.removeEventListener("keydown", handleKey);
   }, [clickedRow, onClose]);
 
-  // Customer-level aggregates
   const customerName  = clickedRow?.customerName ?? "";
   const totalBalance  = customerRows.reduce((s, r) => s + r.remainingBalance, 0);
   const docCount      = customerRows.length;
@@ -166,7 +191,6 @@ export function CustomerPanel({
     .filter((r) => r.band === "red")
     .reduce((s, r) => s + r.remainingBalance, 0);
 
-  // Documents sorted: most overdue first
   const sortedDocs = [...customerRows].sort((a, b) => b.ageDays - a.ageDays);
 
   return (
@@ -220,6 +244,7 @@ export function CustomerPanel({
             customerName={customerName}
             customerRows={customerRows}
             contact={contact}
+            onAddActivity={onAddActivity}
           />
 
           {/* ── Customer summary ─────────────────────────────────────────── */}
@@ -252,17 +277,25 @@ export function CustomerPanel({
             </div>
           </div>
 
+          {/* ── Activity timeline ────────────────────────────────────────── */}
+          <ActivitySection
+            key={customerName}
+            customerName={customerName}
+            entries={activityEntries}
+            onAddActivity={onAddActivity}
+          />
+
         </div>
       )}
     </div>
   );
 }
 
-// ── StatusSection — purely controlled, one-click saves ──────────────────────
+// ── StatusSection ───────────────────────────────────────────────────────────
 
 interface StatusSectionProps {
   customerName: string;
-  status:       CustomerStatus | undefined; // undefined = "לא טופל" (default)
+  status:       CustomerStatus | undefined;
   onSaveStatus: (customerName: string, status: CollectionStatus) => void;
 }
 
@@ -298,12 +331,13 @@ function StatusSection({ customerName, status, onSaveStatus }: StatusSectionProp
 // ── CommunicationSection ────────────────────────────────────────────────────
 
 interface CommunicationSectionProps {
-  customerName: string;
-  customerRows: EnrichedRow[];
-  contact:      CustomerContact | undefined;
+  customerName:  string;
+  customerRows:  EnrichedRow[];
+  contact:       CustomerContact | undefined;
+  onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
 }
 
-function CommunicationSection({ customerName, customerRows, contact }: CommunicationSectionProps) {
+function CommunicationSection({ customerName, customerRows, contact, onAddActivity }: CommunicationSectionProps) {
   const phone = contact?.phone;
   const email = contact?.email;
 
@@ -312,18 +346,18 @@ function CommunicationSection({ customerName, customerRows, contact }: Communica
     const msg = buildWhatsAppMessage(customerName, customerRows);
     const url = `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank", "noopener,noreferrer");
+    onAddActivity(customerName, "whatsapp_opened", "טיוטת WhatsApp נפתחה");
   }
 
   function handleEmail() {
     if (!email) return;
     window.location.href = buildEmailUrl(email, customerName, customerRows);
+    onAddActivity(customerName, "email_opened", "טיוטת אימייל נפתחה");
   }
 
   return (
     <div className="shrink-0 border-b border-gray-200 px-5 py-3">
       <div className="flex gap-3">
-
-        {/* WhatsApp — tooltip on wrapper so it shows even when button is disabled */}
         <div
           className="flex-1"
           {...(!phone ? { title: "הוסף טלפון בפרטי הקשר" } : {})}
@@ -337,8 +371,6 @@ function CommunicationSection({ customerName, customerRows, contact }: Communica
             WhatsApp
           </button>
         </div>
-
-        {/* Email */}
         <div
           className="flex-1"
           {...(!email ? { title: "הוסף אימייל בפרטי הקשר" } : {})}
@@ -352,7 +384,6 @@ function CommunicationSection({ customerName, customerRows, contact }: Communica
             אימייל
           </button>
         </div>
-
       </div>
     </div>
   );
@@ -418,23 +449,9 @@ function ContactSection({ customerName, contact, onSaveContact }: ContactSection
       <div className="shrink-0 border-b border-gray-200 px-5 py-4">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">פרטי קשר</p>
         <div className="space-y-3">
-          <EditField
-            label="שם איש קשר"
-            value={draft.contactPerson}
-            onChange={(v) => setDraft((d) => ({ ...d, contactPerson: v }))}
-          />
-          <EditField
-            label="טלפון"
-            value={draft.phone}
-            onChange={(v) => setDraft((d) => ({ ...d, phone: v }))}
-            type="tel"
-          />
-          <EditField
-            label="אימייל"
-            value={draft.email}
-            onChange={(v) => setDraft((d) => ({ ...d, email: v }))}
-            type="email"
-          />
+          <EditField label="שם איש קשר" value={draft.contactPerson} onChange={(v) => setDraft((d) => ({ ...d, contactPerson: v }))} />
+          <EditField label="טלפון"       value={draft.phone}         onChange={(v) => setDraft((d) => ({ ...d, phone: v }))}         type="tel" />
+          <EditField label="אימייל"      value={draft.email}         onChange={(v) => setDraft((d) => ({ ...d, email: v }))}         type="email" />
           <div>
             <label className="mb-1 block text-xs text-gray-400">הערות</label>
             <textarea
@@ -445,18 +462,10 @@ function ContactSection({ customerName, contact, onSaveContact }: ContactSection
             />
           </div>
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsEditing(false)}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-            >
+            <button type="button" onClick={() => setIsEditing(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
               ביטול
             </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-            >
+            <button type="button" onClick={handleSave} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
               שמור
             </button>
           </div>
@@ -469,28 +478,16 @@ function ContactSection({ customerName, contact, onSaveContact }: ContactSection
     <div className="shrink-0 border-b border-gray-200 px-5 py-4">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">פרטי קשר</p>
-        <button
-          type="button"
-          onClick={startEdit}
-          className="rounded text-xs text-blue-600 hover:text-blue-800"
-        >
+        <button type="button" onClick={startEdit} className="rounded text-xs text-blue-600 hover:text-blue-800">
           {hasAnyData ? "עריכה" : "+ הוסף"}
         </button>
       </div>
       {hasAnyData ? (
         <dl className="space-y-2">
-          {contact?.contactPerson && (
-            <ViewRow label="שם איש קשר" value={contact.contactPerson} />
-          )}
-          {contact?.phone && (
-            <ViewRow label="טלפון" value={contact.phone} />
-          )}
-          {contact?.email && (
-            <ViewRow label="אימייל" value={contact.email} />
-          )}
-          {contact?.notes && (
-            <ViewRow label="הערות" value={contact.notes} multiline />
-          )}
+          {contact?.contactPerson && <ViewRow label="שם איש קשר" value={contact.contactPerson} />}
+          {contact?.phone         && <ViewRow label="טלפון"       value={contact.phone} />}
+          {contact?.email         && <ViewRow label="אימייל"      value={contact.email} />}
+          {contact?.notes         && <ViewRow label="הערות"       value={contact.notes} multiline />}
         </dl>
       ) : (
         <p className="text-sm italic text-gray-400">אין פרטי קשר שמורים</p>
@@ -499,18 +496,82 @@ function ContactSection({ customerName, contact, onSaveContact }: ContactSection
   );
 }
 
-// ── ContactSection helpers ──────────────────────────────────────────────────
+// ── ActivitySection ─────────────────────────────────────────────────────────
+// key={customerName} is set by the parent so note input resets when customer changes
 
-function EditField({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label:    string;
-  value:    string;
-  onChange: (v: string) => void;
-  type?:    string;
+interface ActivitySectionProps {
+  customerName:  string;
+  entries:       ActivityEntry[];
+  onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
+}
+
+function ActivitySection({ customerName, entries, onAddActivity }: ActivitySectionProps) {
+  const [note, setNote] = useState("");
+
+  function handleAdd() {
+    const trimmed = note.trim();
+    if (!trimmed) return;
+    onAddActivity(customerName, "manual_note", trimmed);
+    setNote("");
+  }
+
+  // Newest first
+  const displayed = [...entries].reverse();
+
+  return (
+    <div className="shrink-0 border-t border-gray-200 px-5 py-4">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+        יומן פעילות
+      </p>
+
+      {/* Manual note input */}
+      <div className="mb-3 flex gap-2">
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && note.trim()) handleAdd(); }}
+          placeholder="מה קרה?"
+          className="flex-1 rounded-lg border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={!note.trim()}
+          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          הוסף
+        </button>
+      </div>
+
+      {/* Entry list */}
+      {displayed.length === 0 ? (
+        <p className="text-xs italic text-gray-400">אין פעילות מתועדת עדיין</p>
+      ) : (
+        <div className="max-h-40 space-y-2.5 overflow-y-auto">
+          {displayed.map((entry) => (
+            <div key={entry.id} className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-start gap-2">
+                <span className={`mt-0.5 shrink-0 text-xs font-bold ${ACTIVITY_COLOR[entry.type]}`}>
+                  {ACTIVITY_ICON[entry.type]}
+                </span>
+                <p className="text-xs leading-relaxed text-gray-800">{entry.text}</p>
+              </div>
+              <time className="shrink-0 whitespace-nowrap text-xs text-gray-400">
+                {fmtEntryTime(entry.createdAt)}
+              </time>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Shared sub-components ───────────────────────────────────────────────────
+
+function EditField({ label, value, onChange, type = "text" }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string;
 }) {
   return (
     <div>
@@ -525,14 +586,8 @@ function EditField({
   );
 }
 
-function ViewRow({
-  label,
-  value,
-  multiline = false,
-}: {
-  label:      string;
-  value:      string;
-  multiline?: boolean;
+function ViewRow({ label, value, multiline = false }: {
+  label: string; value: string; multiline?: boolean;
 }) {
   return (
     <div className="flex items-start justify-between gap-3 text-sm">
@@ -544,13 +599,8 @@ function ViewRow({
   );
 }
 
-// ── Panel sub-components ────────────────────────────────────────────────────
-
 interface SummaryItemProps {
-  label:    string;
-  value:    string;
-  size?:    "large";
-  variant?: "red" | "neutral";
+  label: string; value: string; size?: "large"; variant?: "red" | "neutral";
 }
 
 function SummaryItem({ label, value, size, variant }: SummaryItemProps) {
@@ -558,11 +608,7 @@ function SummaryItem({ label, value, size, variant }: SummaryItemProps) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
       <p className="text-xs text-gray-400">{label}</p>
-      <p
-        className={`mt-0.5 font-bold tabular-nums ${
-          size === "large" ? "text-base" : "text-sm"
-        } ${valueColor}`}
-      >
+      <p className={`mt-0.5 font-bold tabular-nums ${size === "large" ? "text-base" : "text-sm"} ${valueColor}`}>
         {value}
       </p>
     </div>
@@ -570,52 +616,34 @@ function SummaryItem({ label, value, size, variant }: SummaryItemProps) {
 }
 
 interface DocCardProps {
-  doc:       EnrichedRow;
-  isClicked: boolean;
+  doc: EnrichedRow; isClicked: boolean;
 }
 
 function DocCard({ doc, isClicked }: DocCardProps) {
-  const cardBg = isClicked ? "border-blue-300 bg-blue-50" : CARD_BG[doc.band];
-
-  const balanceColor =
-    doc.remainingBalance < 0
-      ? "text-green-700"
-      : doc.band === "red"
-      ? "text-red-700"
-      : "text-gray-900";
+  const cardBg      = isClicked ? "border-blue-300 bg-blue-50" : CARD_BG[doc.band];
+  const balanceColor = doc.remainingBalance < 0 ? "text-green-700" : doc.band === "red" ? "text-red-700" : "text-gray-900";
 
   return (
     <div className={`rounded-lg border px-4 py-3 ${cardBg}`}>
-
-      {/* Line 1: document type · number  |  balance */}
       <div className="flex items-start justify-between gap-2">
         <p className="text-right text-sm font-semibold text-gray-900">
           {doc.documentType}
           <span className="mx-1 text-gray-300">·</span>
-          <span className="font-normal tabular-nums text-gray-600">
-            {doc.documentNumber}
-          </span>
+          <span className="font-normal tabular-nums text-gray-600">{doc.documentNumber}</span>
         </p>
         <p className={`shrink-0 text-left text-sm font-bold tabular-nums ${balanceColor}`}>
           {fmtCurrency(doc.remainingBalance)}
         </p>
       </div>
-
-      {/* Line 2: dates  |  aging badge */}
       <div className="mt-1.5 flex items-center justify-between gap-2">
         <p className="text-right text-xs text-gray-500">
           {doc.documentDate}
-          {doc.dueDate !== "" && (
-            <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>
-          )}
+          {doc.dueDate !== "" && <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>}
         </p>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}
-        >
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}>
           {doc.ageDays} יום
         </span>
       </div>
-
     </div>
   );
 }

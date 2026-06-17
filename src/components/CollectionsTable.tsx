@@ -6,6 +6,7 @@ import type { AgingBand, EnrichedRow } from "@/types/collections";
 import type { ContactMap, CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
+import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { CustomerPanel } from "@/components/CustomerPanel";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
@@ -170,6 +171,8 @@ interface CollectionsTableProps {
   onSaveContact: (customerName: string, contact: CustomerContact) => void;
   statuses: StatusMap;
   onSaveStatus: (customerName: string, status: CollectionStatus) => void;
+  activityLog:   ActivityLog;
+  onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
 }
 
 export function CollectionsTable({
@@ -180,6 +183,8 @@ export function CollectionsTable({
   onSaveContact,
   statuses,
   onSaveStatus,
+  activityLog,
+  onAddActivity,
 }: CollectionsTableProps) {
   const [query,              setQuery]              = useState("");
   const [sortCol,            setSortCol]            = useState<SortColumn>("remainingBalance");
@@ -283,6 +288,9 @@ export function CollectionsTable({
 
   const customerStatus: CustomerStatus | undefined =
     selectedRow !== null ? statuses[selectedRow.customerName] : undefined;
+
+  const customerActivity: ActivityEntry[] =
+    selectedRow !== null ? (activityLog[selectedRow.customerName] ?? []) : [];
 
   const filtersActive = activeFilter !== "all" || activeStatusFilter !== "all";
 
@@ -500,6 +508,8 @@ export function CollectionsTable({
         onSaveContact={onSaveContact}
         status={customerStatus}
         onSaveStatus={onSaveStatus}
+        activityEntries={customerActivity}
+        onAddActivity={onAddActivity}
       />
 
     </div>

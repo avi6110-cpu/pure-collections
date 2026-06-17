@@ -1,20 +1,18 @@
 # CURRENT TASK
 
-## Customer Detail Panel — Complete
+## Customer Activity Timeline V1 — Complete
 
 **Status:** Complete
-**Completed:** 2026-06-16
+**Completed:** 2026-06-17
 **Assigned to:** Claude Code
 
 ---
 
 ## Objective
 
-Upgrade the collections screen into a real persistent workspace:
-- Remove operational noise (Due Date, Reference)
-- Rename "גיל חוב" → "זמן חריגה"
-- Add sort on all visible columns
-- Add localStorage persistence so the app reopens directly into the workspace
+Track what happened with each customer over time.
+Automatic entries for status changes, WhatsApp opens, email opens.
+Manual note input. Persisted in separate localStorage key.
 
 ---
 
@@ -22,17 +20,19 @@ Upgrade the collections screen into a real persistent workspace:
 
 | Item | Result |
 |------|--------|
-| Remove Due Date column | Done — field kept in RivhitRow for future use ✓ |
-| Remove Reference column | Done — field kept in RivhitRow for future use ✓ |
-| Rename column header | גיל חוב → זמן חריגה ✓ |
-| Sort on all 6 visible columns | Click header to sort asc/desc; active column highlighted ✓ |
-| localStorage persistence | `pure-collections:report` key, survives browser close ✓ |
-| AppShell top-level state | loading → upload | workspace; `startTransition` for hydration ✓ |
-| UploadForm pure UI | Accepts `onImport` + optional `onCancel` props only ✓ |
-| CollectionsTable `importedAt` | Shows "עודכן: …" timestamp in top bar ✓ |
-| "ייבוא דוח חדש" does not clear data | localStorage untouched until new import succeeds ✓ |
-| New import replaces stored report in full | No merge logic needed ✓ |
-| Back-to-workspace button | "→ חזרה לרשומות" shown when canCancel=true ✓ |
+| `src/types/activity.ts` — `ActivityType`, `ActivityEntry`, `ActivityLog` | Done ✓ |
+| `pure-collections:activity` localStorage key (survives imports) | Done ✓ |
+| Auto-entry on status change: `סטטוס שונה מ"X" ל"Y"` | Done ✓ |
+| Auto-entry on WhatsApp open: `טיוטת WhatsApp נפתחה` | Done ✓ |
+| Auto-entry on email open: `טיוטת אימייל נפתחה` | Done ✓ |
+| Manual note input with "הוסף" button + Enter key support | Done ✓ |
+| "יומן פעילות" section in Customer Panel | Done ✓ |
+| Entries displayed newest-first | Done ✓ |
+| Empty state: `אין פעילות מתועדת עדיין` | Done ✓ |
+| Per-entry icon (◎ W @ •) + color by type | Done ✓ |
+| Timestamp on each entry (he-IL short date + time) | Done ✓ |
+| `key={customerName}` on ActivitySection — resets note input on customer switch | Done ✓ |
+| Stale closure avoided — status change and activity logged in single setState | Done ✓ |
 | `npm run lint` | Clean ✓ |
 | `npm run build` | Clean, all pages static ✓ |
 
@@ -40,16 +40,13 @@ Upgrade the collections screen into a real persistent workspace:
 
 ## Files Changed
 
-- `src/components/AppShell.tsx` — NEW: top-level persistence/routing shell
-- `src/app/upload/page.tsx` — now renders `<AppShell />`
-- `src/components/UploadForm.tsx` — pure UI, `onImport` + `onCancel` props
-- `src/components/CollectionsTable.tsx` — 6 columns, sort, `importedAt`, זמן חריגה
+- `src/types/activity.ts` — NEW
+- `src/components/AppShell.tsx` — 4th localStorage key, `handleAddActivity`, inline activity in `handleSaveStatus`
+- `src/components/CollectionsTable.tsx` — `activityLog` + `onAddActivity` props, `customerActivity` memo
+- `src/components/CustomerPanel.tsx` — `ActivitySection`, updated `CommunicationSection`, new props
 
 ---
 
 ## Next Task
 
-To be defined. Candidates:
-- Column sort (already done!)
-- Row detail / debtor panel (reference & due date available from RivhitRow)
-- Export filtered view to CSV
+To be defined by user.
