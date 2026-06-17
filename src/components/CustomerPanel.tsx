@@ -40,14 +40,133 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+// ── Rivhit document link fetching ───────────────────────────────────────────
+
+// Maps the human-readable document type name (from the Rivhit export) to its
+// numeric document_type ID used by the Rivhit API. Discovered via Document.TypeList.
+const DOC_TYPE_NUM: Readonly<Record<string, number>> = {
+  "חשבונית מס":        1,
+  "חשבונית מס קבלה":  2,
+  "חשבונית מס זיכוי": 3,
+  "חשבון חיוב":        8,
+};
+
+function readToken(): string {
+  try {
+    const raw = localStorage.getItem("pure-collections:settings");
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { rivhitApiToken?: string };
+    return parsed.rivhitApiToken ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// Recursively scans any value in a Rivhit response and returns the first
+// http(s) URL string found. Same strategy as the settings page analysis —
+// does not rely on a specific field name.
+function extractFirstUrl(data: unknown): string | null {
+  if (typeof data === "string") return /^https?:\/\//.test(data) ? data : null;
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const found = extractFirstUrl(item);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+  if (data !== null && typeof data === "object") {
+    for (const val of Object.values(data as Record<string, unknown>)) {
+      const found = extractFirstUrl(val);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+interface LinkResult {
+  link: string | null;
+  debug: string;
+}
+
+async function fetchDocumentLink(
+  token: string,
+  documentType: string,
+  documentNumber: number,
+): Promise<LinkResult> {
+  // Trim defensively — Rivhit exports sometimes have trailing whitespace
+  const typeKey = documentType.trim();
+  const typeNum = DOC_TYPE_NUM[typeKey];
+  if (typeNum === undefined) {
+    return { link: null, debug: `סוג "${typeKey}" לא ממופה` };
+  }
+  try {
+    const res = await fetch("/api/rivhit/document-list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+      body: JSON.stringify({
+        from_document_type:   typeNum,
+        to_document_type:     typeNum,
+        from_document_number: documentNumber,
+        to_document_number:   documentNumber,
+      }),
+    });
+    if (!res.ok) return { link: null, debug: `HTTP ${res.status}` };
+    const data: unknown = await res.json();
+    const rec = data as Record<string, unknown>;
+    if (typeof rec["error_code"] === "number" && rec["error_code"] !== 0) {
+      return { link: null, debug: `Rivhit error ${String(rec["error_code"])}: ${String(rec["client_message"] ?? "")}` };
+    }
+    const link = extractFirstUrl(data);
+    return { link, debug: link !== null ? "✓ קישור נמצא" : "✗ אין URL בתגובה" };
+  } catch (err) {
+    return { link: null, debug: `חריגה: ${String(err)}` };
+  }
+}
+
+interface LinksResult {
+  map:        Map<string, string>;
+  debugLines: string[];
+  tokenFound: boolean;
+}
+
+// Fetches a document_link for each row in parallel. Per-document failures are
+// captured in debugLines and do not block the message from sending.
+async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<LinksResult> {
+  const token = readToken();
+  if (!token) {
+    return { map: new Map(), debugLines: ["טוקן לא נמצא — בדוק הגדרות"], tokenFound: false };
+  }
+  const settled = await Promise.allSettled(
+    rows.map(async (row) => {
+      const result = await fetchDocumentLink(token, row.documentType, row.documentNumber);
+      return { key: docKey(row), label: `${row.documentType} ${row.documentNumber}`, ...result };
+    }),
+  );
+  const map = new Map<string, string>();
+  const debugLines: string[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") {
+      debugLines.push(`${r.value.label}: ${r.value.debug}`);
+      if (r.value.link !== null) map.set(r.value.key, r.value.link);
+    } else {
+      debugLines.push("שגיאה לא צפויה");
+    }
+  }
+  return { map, debugLines, tokenFound: true };
+}
+
+// ── Message builders ─────────────────────────────────────────────────────────
+
 // Builds a WhatsApp draft from the caller-supplied rows (already filtered to selection)
-function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[]): string {
+function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: Map<string, string>): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
 
-  const docLines = sorted.map(
-    (r) => `• ${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} (${r.ageDays} יום)`
-  );
+  const docLines = sorted.flatMap((r) => {
+    const line = `• ${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} (${r.ageDays} יום)`;
+    const link = links.get(docKey(r));
+    return link !== undefined ? [line, `  🔗 ${link}`] : [line];
+  });
 
   return [
     `שלום ${customerName},`,
@@ -66,13 +185,15 @@ function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[]): string
   ].join("\n");
 }
 
-function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[]): string {
+function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[], links: Map<string, string>): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
 
-  const docLines = sorted.map(
-    (r) => `${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} — ${r.documentDate} — ${r.ageDays} ימים פיגור`
-  );
+  const docLines = sorted.flatMap((r) => {
+    const line = `${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} — ${r.documentDate} — ${r.ageDays} ימים פיגור`;
+    const link = links.get(docKey(r));
+    return link !== undefined ? [line, `  🔗 ${link}`] : [line];
+  });
 
   const subject = `תזכורת תשלום — ${customerName}`;
 
@@ -406,34 +527,107 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   const phone      = contact?.phone;
   const email      = contact?.email;
   const noSelected = selectedRows.length === 0;
+  const [busy, setBusy]   = useState(false);
+  const [steps, setSteps] = useState<string[] | null>(null);
 
-  const waDisabled = !phone || noSelected;
-  const emDisabled = !email || noSelected;
-
-  const waTitle = noSelected
-    ? "לא נבחרו מסמכים לשליחה"
-    : !phone
-    ? "הוסף טלפון בפרטי הקשר"
-    : undefined;
-
-  const emTitle = noSelected
-    ? "לא נבחרו מסמכים לשליחה"
-    : !email
-    ? "הוסף אימייל בפרטי הקשר"
-    : undefined;
-
-  function handleWhatsApp() {
-    if (!phone || noSelected) return;
-    const msg = buildWhatsAppMessage(customerName, selectedRows);
-    const url = `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    onAddActivity(customerName, "whatsapp_opened", "טיוטת WhatsApp נפתחה");
+  // Yields to the event loop so React can flush the latest state update
+  // and paint the step to the screen before the next step runs.
+  function tick(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  function handleEmail() {
+  function addStep(line: string): void {
+    setSteps((prev) => [...(prev ?? []), line]);
+  }
+
+  const waDisabled = !phone || noSelected || busy;
+  const emDisabled = !email || noSelected || busy;
+
+  const waTitle = noSelected ? "לא נבחרו מסמכים לשליחה" : !phone ? "הוסף טלפון בפרטי הקשר" : undefined;
+  const emTitle = noSelected ? "לא נבחרו מסמכים לשליחה" : !email ? "הוסף אימייל בפרטי הקשר" : undefined;
+
+  // Runs the full link-fetch sequence, painting each step to the UI before
+  // proceeding. Returns the map of docKey → URL (empty if anything fails).
+  async function fetchLinksWithSteps(): Promise<Map<string, string>> {
+    setSteps(["1. מתחיל להביא קישורים..."]);
+    await tick();
+
+    // Diagnostic: show exactly what is (or isn't) in localStorage
+    const rawStorage = localStorage.getItem("pure-collections:settings");
+    if (rawStorage === null) {
+      addStep("⚠️ localStorage key 'pure-collections:settings' לא קיים");
+    } else {
+      try {
+        const parsed = JSON.parse(rawStorage) as Record<string, unknown>;
+        const hasToken = "rivhitApiToken" in parsed;
+        const tokenVal = parsed["rivhitApiToken"];
+        const tokenNonEmpty = typeof tokenVal === "string" && tokenVal.length > 0;
+        addStep(
+          `localStorage נמצא · rivhitApiToken: ${hasToken ? (tokenNonEmpty ? "✓ יש ערך" : "⚠️ ריק") : "⚠️ שדה חסר"}`
+        );
+      } catch {
+        addStep(`⚠️ localStorage קיים אבל לא JSON תקין: ${rawStorage.slice(0, 60)}`);
+      }
+    }
+    await tick();
+
+    const token = readToken();
+    if (!token) {
+      addStep("⚠️ טוקן לא נמצא — פתח הגדרות, הכנס את הטוקן, לחץ שמור, ונסה שוב");
+      await tick();
+      return new Map();
+    }
+    addStep(`2. טוקן נמצא ✓`);
+    await tick();
+
+    for (const row of selectedRows) {
+      const typeKey = row.documentType.trim();
+      const typeNum = DOC_TYPE_NUM[typeKey];
+      if (typeNum !== undefined) {
+        addStep(`3. קורא ל-/api/rivhit/document-list · סוג ${typeNum} · מסמך ${row.documentNumber}`);
+      } else {
+        addStep(`3. ⚠️ סוג "${typeKey}" לא ממופה — מדלג`);
+      }
+    }
+    await tick();
+
+    const { map, debugLines } = await fetchDocumentLinks(selectedRows);
+
+    addStep("4. התקבלה תשובה:");
+    for (const line of debugLines) addStep(`   ${line}`);
+    await tick();
+
+    addStep(`5. נמצאו ${map.size}/${selectedRows.length} קישורים`);
+    await tick();
+
+    return map;
+  }
+
+  async function handleWhatsApp() {
+    if (!phone || noSelected) return;
+    setBusy(true);
+    const links = await fetchLinksWithSteps();
+    const msg = buildWhatsAppMessage(customerName, selectedRows, links);
+    addStep(`6. הודעה: ${msg.length} תווים · ${msg.split("\n").length} שורות`);
+    addStep(`   תחילת הודעה: ${msg.slice(0, 60).replace(/\n/g, "↵")}`);
+    addStep(`   סוף הודעה:   ${msg.slice(-60).replace(/\n/g, "↵")}`);
+    await tick();
+    addStep("7. פותח WhatsApp...");
+    await tick();
+    window.open(`https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+    onAddActivity(customerName, "whatsapp_opened", "טיוטת WhatsApp נפתחה");
+    setBusy(false);
+  }
+
+  async function handleEmail() {
     if (!email || noSelected) return;
-    window.location.href = buildEmailUrl(email, customerName, selectedRows);
+    setBusy(true);
+    const links = await fetchLinksWithSteps();
+    addStep("6. פותח אימייל...");
+    await tick();
+    window.location.href = buildEmailUrl(email, customerName, selectedRows, links);
     onAddActivity(customerName, "email_opened", "טיוטת אימייל נפתחה");
+    setBusy(false);
   }
 
   return (
@@ -442,24 +636,33 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
         <div className="flex-1" {...(waTitle ? { title: waTitle } : {})}>
           <button
             type="button"
-            onClick={handleWhatsApp}
+            onClick={() => { void handleWhatsApp(); }}
             disabled={waDisabled}
             className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            WhatsApp
+            {busy ? "מכין קישורים..." : "WhatsApp"}
           </button>
         </div>
         <div className="flex-1" {...(emTitle ? { title: emTitle } : {})}>
           <button
             type="button"
-            onClick={handleEmail}
+            onClick={() => { void handleEmail(); }}
             disabled={emDisabled}
             className="w-full rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            אימייל
+            {busy ? "מכין קישורים..." : "אימייל"}
           </button>
         </div>
       </div>
+
+      {/* ── Debug panel — temporary ─────────────────────────────────────── */}
+      {steps !== null && (
+        <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-mono text-xs text-blue-900">
+          {steps.map((s, i) => (
+            <p key={i} className="leading-snug">{s}</p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

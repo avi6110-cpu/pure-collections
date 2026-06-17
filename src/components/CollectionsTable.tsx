@@ -229,16 +229,19 @@ export function CollectionsTable({
   // Summary always reflects the full unfiltered report
   const summary = useMemo(() => {
     let totalBalance  = 0;
+    let balanceFresh  = 0;
     let balance30to60 = 0;
     let balance60plus = 0;
+    let countFresh    = 0;
     let count30to60   = 0;
     let count60plus   = 0;
     for (const r of enriched) {
       totalBalance += r.remainingBalance;
+      if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++; }
       if (r.band === "yellow") { balance30to60 += r.remainingBalance; count30to60++; }
       if (r.band === "red")    { balance60plus += r.remainingBalance; count60plus++; }
     }
-    return { totalRows: enriched.length, totalBalance, balance30to60, balance60plus, count30to60, count60plus };
+    return { totalRows: enriched.length, totalBalance, balanceFresh, countFresh, balance30to60, balance60plus, count30to60, count60plus };
   }, [enriched]);
 
   // 1. Band filter
@@ -349,12 +352,12 @@ export function CollectionsTable({
             onClick={() => handleFilterClick("yellow")}
           />
           <SecondaryCard
-            label="סה״כ רשומות"
-            value={String(summary.totalRows)}
-            count={summary.totalRows}
+            label="טרם לטיפול (<30 יום)"
+            value={fmtCurrency(summary.balanceFresh)}
+            count={summary.countFresh}
             variant="neutral"
             isActive={false}
-            onClick={() => handleFilterClick("all")}
+            onClick={() => setActiveFilter("all")}
           />
         </div>
       </section>
