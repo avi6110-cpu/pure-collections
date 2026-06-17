@@ -17,6 +17,75 @@ function fmtCurrency(n: number): string {
   return "₪ " + ILS.format(n);
 }
 
+// ── Communication helpers ────────────────────────────────────────────────────
+
+const WA_DOC_LIMIT = 10;
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("972")) return digits;
+  if (digits.startsWith("0"))   return "972" + digits.slice(1);
+  return digits;
+}
+
+function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[]): string {
+  const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
+  const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
+  const shown  = sorted.slice(0, WA_DOC_LIMIT);
+  const hidden = sorted.length - shown.length;
+
+  const docLines = shown.map(
+    (r) => `• ${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} (${r.ageDays} יום)`
+  );
+  if (hidden > 0) docLines.push(`• ועוד ${hidden} מסמכים נוספים`);
+
+  return [
+    `שלום ${customerName},`,
+    ``,
+    `ברצוננו להזכירך כי קיימת יתרה פתוחה במערכת:`,
+    ``,
+    `סכום כולל לתשלום: ${fmtCurrency(total)}`,
+    ``,
+    `מסמכים פתוחים:`,
+    ...docLines,
+    ``,
+    `נשמח לקבל את תשלומכם בהקדם האפשרי.`,
+    ``,
+    `תודה,`,
+    `PURE WATER ISRAEL`,
+  ].join("\n");
+}
+
+function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[]): string {
+  const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
+  const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
+
+  const docLines = sorted.map(
+    (r) => `${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} — ${r.documentDate} — ${r.ageDays} ימים פיגור`
+  );
+
+  const subject = `תזכורת תשלום — ${customerName}`;
+
+  const body = [
+    `שלום ${customerName},`,
+    ``,
+    `להלן פירוט היתרה הפתוחה במערכת:`,
+    ``,
+    `סכום כולל לתשלום: ${fmtCurrency(total)}`,
+    ``,
+    `פירוט מסמכים:`,
+    ...docLines,
+    ``,
+    `נבקשך לסדר את התשלום בהקדם האפשרי.`,
+    `לפרטים נוספים אנא צור עמנו קשר.`,
+    ``,
+    `בכבוד רב,`,
+    `PURE WATER ISRAEL`,
+  ].join("\n");
+
+  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 // ── Styling maps ────────────────────────────────────────────────────────────
 
 const BAND_BADGE: Record<EnrichedRow["band"], string> = {
@@ -146,6 +215,13 @@ export function CustomerPanel({
             onSaveContact={onSaveContact}
           />
 
+          {/* ── Communication actions ────────────────────────────────────── */}
+          <CommunicationSection
+            customerName={customerName}
+            customerRows={customerRows}
+            contact={contact}
+          />
+
           {/* ── Customer summary ─────────────────────────────────────────── */}
           <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-4">
             <div className="grid grid-cols-2 gap-3">
@@ -214,6 +290,69 @@ function StatusSection({ customerName, status, onSaveStatus }: StatusSectionProp
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ── CommunicationSection ────────────────────────────────────────────────────
+
+interface CommunicationSectionProps {
+  customerName: string;
+  customerRows: EnrichedRow[];
+  contact:      CustomerContact | undefined;
+}
+
+function CommunicationSection({ customerName, customerRows, contact }: CommunicationSectionProps) {
+  const phone = contact?.phone;
+  const email = contact?.email;
+
+  function handleWhatsApp() {
+    if (!phone) return;
+    const msg = buildWhatsAppMessage(customerName, customerRows);
+    const url = `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function handleEmail() {
+    if (!email) return;
+    window.location.href = buildEmailUrl(email, customerName, customerRows);
+  }
+
+  return (
+    <div className="shrink-0 border-b border-gray-200 px-5 py-3">
+      <div className="flex gap-3">
+
+        {/* WhatsApp — tooltip on wrapper so it shows even when button is disabled */}
+        <div
+          className="flex-1"
+          {...(!phone ? { title: "הוסף טלפון בפרטי הקשר" } : {})}
+        >
+          <button
+            type="button"
+            onClick={handleWhatsApp}
+            disabled={!phone}
+            className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            WhatsApp
+          </button>
+        </div>
+
+        {/* Email */}
+        <div
+          className="flex-1"
+          {...(!email ? { title: "הוסף אימייל בפרטי הקשר" } : {})}
+        >
+          <button
+            type="button"
+            onClick={handleEmail}
+            disabled={!email}
+            className="w-full rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            אימייל
+          </button>
+        </div>
+
       </div>
     </div>
   );
