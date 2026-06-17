@@ -3,11 +3,13 @@
 import { startTransition, useEffect, useState } from "react";
 import type { RivhitRow } from "@/lib/parseRivhit";
 import type { ContactMap, CustomerContact } from "@/types/contacts";
+import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status";
 import { UploadForm } from "@/components/UploadForm";
 import { CollectionsTable } from "@/components/CollectionsTable";
 
 const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
+const STATUSES_KEY = "pure-collections:status";
 
 interface StoredReport {
   importedAt: number;
@@ -17,7 +19,7 @@ interface StoredReport {
 type AppState =
   | { mode: "loading" }
   | { mode: "upload"; canCancel: boolean }
-  | { mode: "workspace"; rows: RivhitRow[]; importedAt: number; contacts: ContactMap };
+  | { mode: "workspace"; rows: RivhitRow[]; importedAt: number; contacts: ContactMap; statuses: StatusMap };
 
 function readReport(): StoredReport | null {
   try {
@@ -47,6 +49,20 @@ function writeContacts(contacts: ContactMap): void {
   localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
 }
 
+function readStatuses(): StatusMap {
+  try {
+    const raw = localStorage.getItem(STATUSES_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as StatusMap;
+  } catch {
+    return {};
+  }
+}
+
+function writeStatuses(statuses: StatusMap): void {
+  localStorage.setItem(STATUSES_KEY, JSON.stringify(statuses));
+}
+
 export function AppShell() {
   const [state, setState] = useState<AppState>({ mode: "loading" });
 
@@ -56,10 +72,11 @@ export function AppShell() {
   useEffect(() => {
     const stored   = readReport();
     const contacts = readContacts();
+    const statuses = readStatuses();
     startTransition(() => {
       setState(
         stored
-          ? { mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts }
+          ? { mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts, statuses }
           : { mode: "upload", canCancel: false }
       );
     });
@@ -68,9 +85,10 @@ export function AppShell() {
   function handleImport(rows: RivhitRow[]) {
     const importedAt = Date.now();
     writeReport({ importedAt, rows });
-    // Contacts are NEVER overwritten on import — read fresh from storage
+    // Contacts and statuses are NEVER overwritten on import — read fresh from storage
     const contacts = readContacts();
-    setState({ mode: "workspace", rows, importedAt, contacts });
+    const statuses = readStatuses();
+    setState({ mode: "workspace", rows, importedAt, contacts, statuses });
   }
 
   // Switch to upload without clearing localStorage —
@@ -82,8 +100,9 @@ export function AppShell() {
   function handleCancelUpload() {
     const stored   = readReport();
     const contacts = readContacts();
+    const statuses = readStatuses();
     if (stored) {
-      setState({ mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts });
+      setState({ mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts, statuses });
     }
   }
 
@@ -91,7 +110,15 @@ export function AppShell() {
     if (state.mode !== "workspace") return;
     const contacts: ContactMap = { ...state.contacts, [customerName]: contact };
     writeContacts(contacts);
-    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts });
+    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts, statuses: state.statuses });
+  }
+
+  function handleSaveStatus(customerName: string, status: CollectionStatus) {
+    if (state.mode !== "workspace") return;
+    const newEntry: CustomerStatus = { status, updatedAt: Date.now() };
+    const statuses: StatusMap = { ...state.statuses, [customerName]: newEntry };
+    writeStatuses(statuses);
+    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts: state.contacts, statuses });
   }
 
   if (state.mode === "loading") return null;
@@ -112,6 +139,8 @@ export function AppShell() {
       onNewImport={handleRequestNewImport}
       contacts={state.contacts}
       onSaveContact={handleSaveContact}
+      statuses={state.statuses}
+      onSaveStatus={handleSaveStatus}
     />
   );
 }

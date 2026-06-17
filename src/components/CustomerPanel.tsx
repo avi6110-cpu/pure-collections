@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import type { EnrichedRow } from "@/types/collections";
 import type { CustomerContact } from "@/types/contacts";
+import type { CollectionStatus, CustomerStatus } from "@/types/status";
+import { ALL_STATUSES } from "@/types/status";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -29,14 +31,40 @@ const CARD_BG: Record<EnrichedRow["band"], string> = {
   red:    "bg-red-50 border-red-200",
 };
 
+// Status pill styles: active = solid fill, inactive = tinted border
+const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }> = {
+  "לא טופל":      {
+    active:   "bg-gray-500 text-white border border-gray-500",
+    inactive: "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100",
+  },
+  "בטיפול":       {
+    active:   "bg-blue-500 text-white border border-blue-500",
+    inactive: "bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100",
+  },
+  "הבטיח לשלם":   {
+    active:   "bg-amber-500 text-white border border-amber-500",
+    inactive: "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100",
+  },
+  "מועמד לתשלום": {
+    active:   "bg-indigo-500 text-white border border-indigo-500",
+    inactive: "bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100",
+  },
+  "שולם":         {
+    active:   "bg-green-500 text-white border border-green-500",
+    inactive: "bg-green-50 text-green-600 border border-green-200 hover:bg-green-100",
+  },
+};
+
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface CustomerPanelProps {
   customerRows:  EnrichedRow[];
   clickedRow:    EnrichedRow | null;
   onClose:       () => void;
-  contact:       CustomerContact | undefined; // undefined = no saved contact
+  contact:       CustomerContact | undefined;
   onSaveContact: (customerName: string, contact: CustomerContact) => void;
+  status:        CustomerStatus | undefined;
+  onSaveStatus:  (customerName: string, status: CollectionStatus) => void;
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -47,6 +75,8 @@ export function CustomerPanel({
   onClose,
   contact,
   onSaveContact,
+  status,
+  onSaveStatus,
 }: CustomerPanelProps) {
   // Close on Escape — only while panel is open
   useEffect(() => {
@@ -101,6 +131,13 @@ export function CustomerPanel({
             </button>
           </div>
 
+          {/* ── Collection status ────────────────────────────────────────── */}
+          <StatusSection
+            customerName={customerName}
+            status={status}
+            onSaveStatus={onSaveStatus}
+          />
+
           {/* ── Contact section ──────────────────────────────────────────── */}
           <ContactSection
             key={customerName}
@@ -141,6 +178,43 @@ export function CustomerPanel({
 
         </div>
       )}
+    </div>
+  );
+}
+
+// ── StatusSection — purely controlled, one-click saves ──────────────────────
+
+interface StatusSectionProps {
+  customerName: string;
+  status:       CustomerStatus | undefined; // undefined = "לא טופל" (default)
+  onSaveStatus: (customerName: string, status: CollectionStatus) => void;
+}
+
+function StatusSection({ customerName, status, onSaveStatus }: StatusSectionProps) {
+  const effectiveStatus: CollectionStatus = status?.status ?? "לא טופל";
+
+  return (
+    <div className="shrink-0 border-b border-gray-200 px-5 py-4">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+        סטטוס גבייה
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {ALL_STATUSES.map((s) => {
+          const isActive = effectiveStatus === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onSaveStatus(customerName, s)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                isActive ? STATUS_PILL[s].active : STATUS_PILL[s].inactive
+              }`}
+            >
+              {s}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

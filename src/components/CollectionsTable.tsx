@@ -4,6 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import type { RivhitRow } from "@/lib/parseRivhit";
 import type { AgingBand, EnrichedRow } from "@/types/collections";
 import type { ContactMap, CustomerContact } from "@/types/contacts";
+import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status";
+import { ALL_STATUSES } from "@/types/status";
 import { CustomerPanel } from "@/components/CustomerPanel";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
@@ -51,6 +53,26 @@ const AGE_BADGE: Record<AgingBand, string> = {
   red:    "bg-red-200 text-red-900",
 };
 
+// ── Status ──────────────────────────────────────────────────────────────────
+
+// 4px right border on the שם לקוח cell (outermost right edge in RTL layout)
+const STATUS_ROW_BORDER: Record<CollectionStatus, string> = {
+  "לא טופל":      "",
+  "בטיפול":       "border-r-4 border-blue-400",
+  "הבטיח לשלם":   "border-r-4 border-amber-400",
+  "מועמד לתשלום": "border-r-4 border-indigo-400",
+  "שולם":         "border-r-4 border-green-400",
+};
+
+// Chip active state colors (same palette as StatusSection in CustomerPanel)
+const STATUS_CHIP_ACTIVE: Record<CollectionStatus, string> = {
+  "לא טופל":      "bg-gray-500 text-white",
+  "בטיפול":       "bg-blue-500 text-white",
+  "הבטיח לשלם":   "bg-amber-500 text-white",
+  "מועמד לתשלום": "bg-indigo-500 text-white",
+  "שולם":         "bg-green-500 text-white",
+};
+
 // ── Sorting ─────────────────────────────────────────────────────────────────
 
 type SortColumn =
@@ -64,6 +86,7 @@ type SortColumn =
 type SortDir = "asc" | "desc";
 
 type ActiveFilter = "all" | "yellow" | "red";
+type StatusFilter = CollectionStatus | "all";
 
 const INITIAL_DIR: Record<SortColumn, SortDir> = {
   customerName:     "asc",
@@ -145,6 +168,8 @@ interface CollectionsTableProps {
   onNewImport: () => void;
   contacts: ContactMap;
   onSaveContact: (customerName: string, contact: CustomerContact) => void;
+  statuses: StatusMap;
+  onSaveStatus: (customerName: string, status: CollectionStatus) => void;
 }
 
 export function CollectionsTable({
@@ -153,12 +178,15 @@ export function CollectionsTable({
   onNewImport,
   contacts,
   onSaveContact,
+  statuses,
+  onSaveStatus,
 }: CollectionsTableProps) {
-  const [query,        setQuery]        = useState("");
-  const [sortCol,      setSortCol]      = useState<SortColumn>("remainingBalance");
-  const [sortDir,      setSortDir]      = useState<SortDir>("desc");
-  const [selectedRow,  setSelectedRow]  = useState<EnrichedRow | null>(null);
-  const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
+  const [query,              setQuery]              = useState("");
+  const [sortCol,            setSortCol]            = useState<SortColumn>("remainingBalance");
+  const [sortDir,            setSortDir]            = useState<SortDir>("desc");
+  const [selectedRow,        setSelectedRow]        = useState<EnrichedRow | null>(null);
+  const [activeFilter,       setActiveFilter]       = useState<ActiveFilter>("all");
+  const [activeStatusFilter, setActiveStatusFilter] = useState<StatusFilter>("all");
 
   const closePanel = useCallback(() => setSelectedRow(null), []);
 
@@ -173,6 +201,10 @@ export function CollectionsTable({
 
   function handleFilterClick(band: ActiveFilter) {
     setActiveFilter((prev) => (prev === band ? "all" : band));
+  }
+
+  function handleStatusFilterClick(s: CollectionStatus) {
+    setActiveStatusFilter((prev) => (prev === s ? "all" : s));
   }
 
   // ── Data pipeline ─────────────────────────────────────────────────────────
@@ -207,19 +239,31 @@ export function CollectionsTable({
     return enriched.filter((r) => r.band === activeFilter);
   }, [enriched, activeFilter]);
 
-  // 2. Search filter (applied on top of band filter)
+  // 2. Status filter — undefined entry treated as "לא טופל"
+  const statusFiltered: EnrichedRow[] = useMemo(() => {
+    if (activeStatusFilter === "all") return bandFiltered;
+    return bandFiltered.filter((r) => {
+      const entry = statuses[r.customerName];
+      if (activeStatusFilter === "לא טופל") {
+        return entry === undefined || entry.status === "לא טופל";
+      }
+      return entry?.status === activeStatusFilter;
+    });
+  }, [bandFiltered, activeStatusFilter, statuses]);
+
+  // 3. Search filter
   const filtered: EnrichedRow[] = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return bandFiltered;
-    return bandFiltered.filter(
+    if (!q) return statusFiltered;
+    return statusFiltered.filter(
       (r) =>
         r.customerName.toLowerCase().includes(q) ||
         String(r.documentNumber).includes(q) ||
         r.documentType.toLowerCase().includes(q)
     );
-  }, [bandFiltered, query]);
+  }, [statusFiltered, query]);
 
-  // 3. Sort
+  // 4. Sort
   const displayed: EnrichedRow[] = useMemo(
     () => sortRows(filtered, sortCol, sortDir),
     [filtered, sortCol, sortDir]
@@ -234,9 +278,13 @@ export function CollectionsTable({
     [enriched, selectedRow]
   );
 
-  // Contact data for the selected customer
   const customerContact: CustomerContact | undefined =
     selectedRow !== null ? contacts[selectedRow.customerName] : undefined;
+
+  const customerStatus: CustomerStatus | undefined =
+    selectedRow !== null ? statuses[selectedRow.customerName] : undefined;
+
+  const filtersActive = activeFilter !== "all" || activeStatusFilter !== "all";
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
@@ -294,8 +342,10 @@ export function CollectionsTable({
         </div>
       </section>
 
-      {/* ── Search bar ──────────────────────────────────────────────────── */}
+      {/* ── Search + filters ─────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-3">
+
+        {/* Row 1: search input + active band pill + count */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-1 items-center gap-3">
             <input
@@ -317,7 +367,7 @@ export function CollectionsTable({
                 <button
                   type="button"
                   onClick={() => setActiveFilter("all")}
-                  aria-label="נקה מסנן"
+                  aria-label="נקה סינון גיל"
                   className="opacity-60 hover:opacity-100"
                 >
                   ✕
@@ -328,13 +378,36 @@ export function CollectionsTable({
           <p className="shrink-0 text-sm text-gray-500">
             <span className="font-semibold text-gray-800">{displayed.length}</span>
             {" "}מתוך{" "}
-            <span className="font-semibold text-gray-800">
-              {activeFilter === "all" ? summary.totalRows : bandFiltered.length}
-            </span>
-            {activeFilter !== "all" && (
-              <span className="text-gray-400"> ({summary.totalRows} סה״כ)</span>
+            <span className="font-semibold text-gray-800">{summary.totalRows}</span>
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={() => { setActiveFilter("all"); setActiveStatusFilter("all"); }}
+                className="mr-2 text-xs text-blue-600 hover:text-blue-800"
+              >
+                נקה הכל
+              </button>
             )}
           </p>
+        </div>
+
+        {/* Row 2: status filter chips (always visible) */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <span className="shrink-0 text-xs text-gray-400">סטטוס:</span>
+          {ALL_STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => handleStatusFilterClick(s)}
+              className={`rounded-full px-3 py-0.5 text-xs font-medium transition-colors ${
+                activeStatusFilter === s
+                  ? STATUS_CHIP_ACTIVE[s]
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -353,7 +426,9 @@ export function CollectionsTable({
           </thead>
           <tbody className="bg-white">
             {displayed.map((row, i) => {
-              const isSelected = selectedRow?.documentNumber === row.documentNumber;
+              const isSelected    = selectedRow?.documentNumber === row.documentNumber;
+              const effectiveStatus: CollectionStatus = statuses[row.customerName]?.status ?? "לא טופל";
+              const borderClass   = STATUS_ROW_BORDER[effectiveStatus];
               return (
                 <tr
                   key={i}
@@ -366,8 +441,8 @@ export function CollectionsTable({
                     isSelected ? ROW_BG_SELECTED : ROW_BG[row.band]
                   }`}
                 >
-                  {/* שם לקוח */}
-                  <td className="max-w-xs truncate whitespace-nowrap px-4 py-2.5 text-right font-medium text-gray-900">
+                  {/* שם לקוח — carries the status border stripe on its right edge */}
+                  <td className={`max-w-xs truncate whitespace-nowrap px-4 py-2.5 text-right font-medium text-gray-900 ${borderClass}`}>
                     {row.customerName}
                   </td>
 
@@ -423,6 +498,8 @@ export function CollectionsTable({
         onClose={closePanel}
         contact={customerContact}
         onSaveContact={onSaveContact}
+        status={customerStatus}
+        onSaveStatus={onSaveStatus}
       />
 
     </div>
