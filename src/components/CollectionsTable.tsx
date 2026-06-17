@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { RivhitRow } from "@/lib/parseRivhit";
 import type { AgingBand, EnrichedRow } from "@/types/collections";
+import type { ContactMap, CustomerContact } from "@/types/contacts";
 import { CustomerPanel } from "@/components/CustomerPanel";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
@@ -62,6 +63,8 @@ type SortColumn =
 
 type SortDir = "asc" | "desc";
 
+type ActiveFilter = "all" | "yellow" | "red";
+
 const INITIAL_DIR: Record<SortColumn, SortDir> = {
   customerName:     "asc",
   remainingBalance: "desc",
@@ -88,13 +91,17 @@ function sortRows(rows: EnrichedRow[], col: SortColumn, dir: SortDir): EnrichedR
 
 // ── Summary card sub-components ─────────────────────────────────────────────
 
-function PrimaryCard({ value, sub }: { value: string; sub: string }) {
+function PrimaryCard({ value, sub, onClick }: { value: string; sub: string; onClick: () => void }) {
   return (
-    <div className="flex flex-col justify-between rounded-xl border border-blue-300 bg-blue-600 px-6 py-4 text-white shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full flex-col justify-between rounded-xl border border-blue-300 bg-blue-600 px-6 py-4 text-right text-white shadow-sm transition-colors hover:bg-blue-700"
+    >
       <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">יתרה לגבייה מיידית</p>
       <p className="mt-1 text-3xl font-bold tabular-nums leading-none">{value}</p>
       <p className="mt-2 text-xs text-blue-300">{sub}</p>
-    </div>
+    </button>
   );
 }
 
@@ -103,20 +110,30 @@ interface SecondaryCardProps {
   value: string;
   count: number;
   variant: "yellow" | "red" | "neutral";
+  onClick: () => void;
+  isActive: boolean;
 }
 
-function SecondaryCard({ label, value, count, variant }: SecondaryCardProps) {
+function SecondaryCard({ label, value, count, variant, onClick, isActive }: SecondaryCardProps) {
   const s = {
-    yellow:  { wrap: "border-amber-200 bg-amber-50",  label: "text-amber-700", value: "text-amber-900" },
-    red:     { wrap: "border-red-200 bg-red-50",       label: "text-red-700",   value: "text-red-900"   },
-    neutral: { wrap: "border-gray-200 bg-white",       label: "text-gray-500",  value: "text-gray-900"  },
+    yellow:  { wrap: "border-amber-200 bg-amber-50",  label: "text-amber-700", value: "text-amber-900", ring: "ring-amber-400" },
+    red:     { wrap: "border-red-200 bg-red-50",       label: "text-red-700",   value: "text-red-900",   ring: "ring-red-400"   },
+    neutral: { wrap: "border-gray-200 bg-white",       label: "text-gray-500",  value: "text-gray-900",  ring: ""               },
   }[variant];
   return (
-    <div className={`flex flex-col justify-between rounded-xl border px-4 py-3 ${s.wrap}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "flex w-full flex-col justify-between rounded-xl border px-4 py-3 text-right transition-all hover:brightness-95",
+        s.wrap,
+        isActive && s.ring ? `ring-2 ring-offset-1 ${s.ring}` : "",
+      ].filter(Boolean).join(" ")}
+    >
       <p className={`text-xs font-semibold ${s.label}`}>{label}</p>
       <p className={`mt-1 text-lg font-bold tabular-nums ${s.value}`}>{value}</p>
       <p className="mt-1 text-xs text-gray-400">{count} רשומות</p>
-    </div>
+    </button>
   );
 }
 
@@ -126,13 +143,22 @@ interface CollectionsTableProps {
   rows: RivhitRow[];
   importedAt: number;
   onNewImport: () => void;
+  contacts: ContactMap;
+  onSaveContact: (customerName: string, contact: CustomerContact) => void;
 }
 
-export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsTableProps) {
-  const [query,       setQuery]       = useState("");
-  const [sortCol,     setSortCol]     = useState<SortColumn>("remainingBalance");
-  const [sortDir,     setSortDir]     = useState<SortDir>("desc");
-  const [selectedRow, setSelectedRow] = useState<EnrichedRow | null>(null);
+export function CollectionsTable({
+  rows,
+  importedAt,
+  onNewImport,
+  contacts,
+  onSaveContact,
+}: CollectionsTableProps) {
+  const [query,        setQuery]        = useState("");
+  const [sortCol,      setSortCol]      = useState<SortColumn>("remainingBalance");
+  const [sortDir,      setSortDir]      = useState<SortDir>("desc");
+  const [selectedRow,  setSelectedRow]  = useState<EnrichedRow | null>(null);
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
 
   const closePanel = useCallback(() => setSelectedRow(null), []);
 
@@ -145,6 +171,12 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
     }
   }
 
+  function handleFilterClick(band: ActiveFilter) {
+    setActiveFilter((prev) => (prev === band ? "all" : band));
+  }
+
+  // ── Data pipeline ─────────────────────────────────────────────────────────
+
   const enriched: EnrichedRow[] = useMemo(
     () =>
       rows.map((r) => {
@@ -154,6 +186,7 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
     [rows]
   );
 
+  // Summary always reflects the full unfiltered report
   const summary = useMemo(() => {
     let totalBalance  = 0;
     let balance30to60 = 0;
@@ -168,23 +201,31 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
     return { totalRows: enriched.length, totalBalance, balance30to60, balance60plus, count30to60, count60plus };
   }, [enriched]);
 
+  // 1. Band filter
+  const bandFiltered: EnrichedRow[] = useMemo(() => {
+    if (activeFilter === "all") return enriched;
+    return enriched.filter((r) => r.band === activeFilter);
+  }, [enriched, activeFilter]);
+
+  // 2. Search filter (applied on top of band filter)
   const filtered: EnrichedRow[] = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return enriched;
-    return enriched.filter(
+    if (!q) return bandFiltered;
+    return bandFiltered.filter(
       (r) =>
         r.customerName.toLowerCase().includes(q) ||
         String(r.documentNumber).includes(q) ||
         r.documentType.toLowerCase().includes(q)
     );
-  }, [enriched, query]);
+  }, [bandFiltered, query]);
 
+  // 3. Sort
   const displayed: EnrichedRow[] = useMemo(
     () => sortRows(filtered, sortCol, sortDir),
     [filtered, sortCol, sortDir]
   );
 
-  // All open documents for the currently selected customer
+  // All open docs for the selected customer — always from full enriched set
   const customerRows: EnrichedRow[] = useMemo(
     () =>
       selectedRow
@@ -192,6 +233,10 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
         : [],
     [enriched, selectedRow]
   );
+
+  // Contact data for the selected customer
+  const customerContact: CustomerContact | undefined =
+    selectedRow !== null ? contacts[selectedRow.customerName] : undefined;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
@@ -220,27 +265,75 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
           <PrimaryCard
             value={fmtCurrency(summary.totalBalance)}
             sub={`${summary.totalRows} רשומות בדוח`}
+            onClick={() => handleFilterClick("all")}
           />
-          <SecondaryCard label="60+ יום"     value={fmtCurrency(summary.balance60plus)}  count={summary.count60plus}  variant="red"     />
-          <SecondaryCard label="30–60 יום"   value={fmtCurrency(summary.balance30to60)}  count={summary.count30to60}  variant="yellow"  />
-          <SecondaryCard label="סה״כ רשומות" value={String(summary.totalRows)}           count={summary.totalRows}    variant="neutral" />
+          <SecondaryCard
+            label="60+ יום"
+            value={fmtCurrency(summary.balance60plus)}
+            count={summary.count60plus}
+            variant="red"
+            isActive={activeFilter === "red"}
+            onClick={() => handleFilterClick("red")}
+          />
+          <SecondaryCard
+            label="30–60 יום"
+            value={fmtCurrency(summary.balance30to60)}
+            count={summary.count30to60}
+            variant="yellow"
+            isActive={activeFilter === "yellow"}
+            onClick={() => handleFilterClick("yellow")}
+          />
+          <SecondaryCard
+            label="סה״כ רשומות"
+            value={String(summary.totalRows)}
+            count={summary.totalRows}
+            variant="neutral"
+            isActive={false}
+            onClick={() => handleFilterClick("all")}
+          />
         </div>
       </section>
 
       {/* ── Search bar ──────────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-3">
         <div className="flex items-center justify-between gap-4">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="חיפוש: שם לקוח, מס׳ מסמך, סוג מסמך..."
-            className="w-full max-w-lg rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-          />
+          <div className="flex flex-1 items-center gap-3">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="חיפוש: שם לקוח, מס׳ מסמך, סוג מסמך..."
+              className="w-full max-w-lg rounded-lg border border-gray-300 bg-gray-50 px-4 py-2 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            />
+            {activeFilter !== "all" && (
+              <div
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                  activeFilter === "red"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                <span>{activeFilter === "red" ? "60+ יום" : "30–60 יום"}</span>
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("all")}
+                  aria-label="נקה מסנן"
+                  className="opacity-60 hover:opacity-100"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
           <p className="shrink-0 text-sm text-gray-500">
             <span className="font-semibold text-gray-800">{displayed.length}</span>
             {" "}מתוך{" "}
-            <span className="font-semibold text-gray-800">{summary.totalRows}</span>
+            <span className="font-semibold text-gray-800">
+              {activeFilter === "all" ? summary.totalRows : bandFiltered.length}
+            </span>
+            {activeFilter !== "all" && (
+              <span className="text-gray-400"> ({summary.totalRows} סה״כ)</span>
+            )}
           </p>
         </div>
       </div>
@@ -328,6 +421,8 @@ export function CollectionsTable({ rows, importedAt, onNewImport }: CollectionsT
         customerRows={customerRows}
         clickedRow={selectedRow}
         onClose={closePanel}
+        contact={customerContact}
+        onSaveContact={onSaveContact}
       />
 
     </div>

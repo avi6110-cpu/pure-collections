@@ -2,10 +2,12 @@
 
 import { startTransition, useEffect, useState } from "react";
 import type { RivhitRow } from "@/lib/parseRivhit";
+import type { ContactMap, CustomerContact } from "@/types/contacts";
 import { UploadForm } from "@/components/UploadForm";
 import { CollectionsTable } from "@/components/CollectionsTable";
 
-const STORAGE_KEY = "pure-collections:report";
+const REPORT_KEY   = "pure-collections:report";
+const CONTACTS_KEY = "pure-collections:contacts";
 
 interface StoredReport {
   importedAt: number;
@@ -15,11 +17,11 @@ interface StoredReport {
 type AppState =
   | { mode: "loading" }
   | { mode: "upload"; canCancel: boolean }
-  | { mode: "workspace"; rows: RivhitRow[]; importedAt: number };
+  | { mode: "workspace"; rows: RivhitRow[]; importedAt: number; contacts: ContactMap };
 
-function readStorage(): StoredReport | null {
+function readReport(): StoredReport | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(REPORT_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as StoredReport;
   } catch {
@@ -27,8 +29,22 @@ function readStorage(): StoredReport | null {
   }
 }
 
-function writeStorage(report: StoredReport): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(report));
+function writeReport(report: StoredReport): void {
+  localStorage.setItem(REPORT_KEY, JSON.stringify(report));
+}
+
+function readContacts(): ContactMap {
+  try {
+    const raw = localStorage.getItem(CONTACTS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as ContactMap;
+  } catch {
+    return {};
+  }
+}
+
+function writeContacts(contacts: ContactMap): void {
+  localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
 }
 
 export function AppShell() {
@@ -38,11 +54,12 @@ export function AppShell() {
   // startTransition wraps setState so it lives in a callback, not the direct
   // effect body — satisfying react-hooks/set-state-in-effect.
   useEffect(() => {
-    const stored = readStorage();
+    const stored   = readReport();
+    const contacts = readContacts();
     startTransition(() => {
       setState(
         stored
-          ? { mode: "workspace", rows: stored.rows, importedAt: stored.importedAt }
+          ? { mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts }
           : { mode: "upload", canCancel: false }
       );
     });
@@ -50,8 +67,10 @@ export function AppShell() {
 
   function handleImport(rows: RivhitRow[]) {
     const importedAt = Date.now();
-    writeStorage({ importedAt, rows });
-    setState({ mode: "workspace", rows, importedAt });
+    writeReport({ importedAt, rows });
+    // Contacts are NEVER overwritten on import — read fresh from storage
+    const contacts = readContacts();
+    setState({ mode: "workspace", rows, importedAt, contacts });
   }
 
   // Switch to upload without clearing localStorage —
@@ -61,10 +80,18 @@ export function AppShell() {
   }
 
   function handleCancelUpload() {
-    const stored = readStorage();
+    const stored   = readReport();
+    const contacts = readContacts();
     if (stored) {
-      setState({ mode: "workspace", rows: stored.rows, importedAt: stored.importedAt });
+      setState({ mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts });
     }
+  }
+
+  function handleSaveContact(customerName: string, contact: CustomerContact) {
+    if (state.mode !== "workspace") return;
+    const contacts: ContactMap = { ...state.contacts, [customerName]: contact };
+    writeContacts(contacts);
+    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts });
   }
 
   if (state.mode === "loading") return null;
@@ -83,6 +110,8 @@ export function AppShell() {
       rows={state.rows}
       importedAt={state.importedAt}
       onNewImport={handleRequestNewImport}
+      contacts={state.contacts}
+      onSaveContact={handleSaveContact}
     />
   );
 }
