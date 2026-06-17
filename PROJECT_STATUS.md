@@ -70,6 +70,7 @@
 - [x] KPI card filters — click red/yellow card to filter table by aging band; AND-logic with search; cards always show full-report totals
 - [x] Customer collection status (לא טופל / בטיפול / הבטיח לשלם / מועמד לתשלום / שולם) — per-customer, separate localStorage key, survives imports; status pills in panel + filter chips in workspace + row border indicator
 - [x] Customer activity timeline — per-customer log (status changes, WhatsApp/email opens, manual notes); `pure-collections:activity` key; newest-first display; icon + timestamp per entry; survives imports
+- [x] Refined statuses — "הבטיח לשלם" replaced by "ממתין לתשלום"; migrate-on-read for existing data; `expectedPaymentDate?: string` per customer; date picker in Customer Panel when status = "מועמד לתשלום"; date survives status changes and imports
 
 ---
 

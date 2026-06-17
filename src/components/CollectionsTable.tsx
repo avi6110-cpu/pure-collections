@@ -60,7 +60,7 @@ const AGE_BADGE: Record<AgingBand, string> = {
 const STATUS_ROW_BORDER: Record<CollectionStatus, string> = {
   "לא טופל":      "",
   "בטיפול":       "border-r-4 border-blue-400",
-  "הבטיח לשלם":   "border-r-4 border-amber-400",
+  "ממתין לתשלום": "border-r-4 border-amber-400",
   "מועמד לתשלום": "border-r-4 border-indigo-400",
   "שולם":         "border-r-4 border-green-400",
 };
@@ -69,7 +69,7 @@ const STATUS_ROW_BORDER: Record<CollectionStatus, string> = {
 const STATUS_CHIP_ACTIVE: Record<CollectionStatus, string> = {
   "לא טופל":      "bg-gray-500 text-white",
   "בטיפול":       "bg-blue-500 text-white",
-  "הבטיח לשלם":   "bg-amber-500 text-white",
+  "ממתין לתשלום": "bg-amber-500 text-white",
   "מועמד לתשלום": "bg-indigo-500 text-white",
   "שולם":         "bg-green-500 text-white",
 };
@@ -171,6 +171,7 @@ interface CollectionsTableProps {
   onSaveContact: (customerName: string, contact: CustomerContact) => void;
   statuses: StatusMap;
   onSaveStatus: (customerName: string, status: CollectionStatus) => void;
+  onSaveExpectedDate: (customerName: string, date: string | undefined) => void;
   activityLog:   ActivityLog;
   onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
 }
@@ -183,6 +184,7 @@ export function CollectionsTable({
   onSaveContact,
   statuses,
   onSaveStatus,
+  onSaveExpectedDate,
   activityLog,
   onAddActivity,
 }: CollectionsTableProps) {
@@ -508,6 +510,7 @@ export function CollectionsTable({
         onSaveContact={onSaveContact}
         status={customerStatus}
         onSaveStatus={onSaveStatus}
+        onSaveExpectedDate={onSaveExpectedDate}
         activityEntries={customerActivity}
         onAddActivity={onAddActivity}
       />

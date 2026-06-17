@@ -58,7 +58,18 @@ function readStatuses(): StatusMap {
   try {
     const raw = localStorage.getItem(STATUSES_KEY);
     if (!raw) return {};
-    return JSON.parse(raw) as StatusMap;
+    const map = JSON.parse(raw) as StatusMap;
+    // One-time migration: "הבטיח לשלם" (removed status) → "ממתין לתשלום"
+    let migrated = false;
+    for (const name of Object.keys(map)) {
+      const entry = map[name];
+      if (entry && (entry.status as string) === "הבטיח לשלם") {
+        map[name] = { ...entry, status: "ממתין לתשלום" };
+        migrated = true;
+      }
+    }
+    if (migrated) writeStatuses(map);
+    return map;
   } catch { return {}; }
 }
 function writeStatuses(statuses: StatusMap): void {
@@ -153,6 +164,18 @@ export function AppShell() {
     setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts: state.contacts, statuses, activityLog });
   }
 
+  function handleSaveExpectedDate(customerName: string, date: string | undefined) {
+    if (state.mode !== "workspace") return;
+    const existing = state.statuses[customerName];
+    if (!existing) return;
+    const newEntry: CustomerStatus = date
+      ? { ...existing, expectedPaymentDate: date }
+      : { status: existing.status, updatedAt: existing.updatedAt };
+    const statuses: StatusMap = { ...state.statuses, [customerName]: newEntry };
+    writeStatuses(statuses);
+    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts: state.contacts, statuses, activityLog: state.activityLog });
+  }
+
   function handleAddActivity(customerName: string, type: ActivityType, text: string) {
     if (state.mode !== "workspace") return;
     const entry: ActivityEntry = { id: crypto.randomUUID(), type, text, createdAt: Date.now() };
@@ -182,6 +205,7 @@ export function AppShell() {
       onSaveContact={handleSaveContact}
       statuses={state.statuses}
       onSaveStatus={handleSaveStatus}
+      onSaveExpectedDate={handleSaveExpectedDate}
       activityLog={state.activityLog}
       onAddActivity={handleAddActivity}
     />

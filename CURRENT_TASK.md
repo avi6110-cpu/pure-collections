@@ -1,6 +1,6 @@
 # CURRENT TASK
 
-## Customer Activity Timeline V1 — Complete
+## Refined Statuses + Expected Payment Date — Complete
 
 **Status:** Complete
 **Completed:** 2026-06-17
@@ -10,9 +10,10 @@
 
 ## Objective
 
-Track what happened with each customer over time.
-Automatic entries for status changes, WhatsApp opens, email opens.
-Manual note input. Persisted in separate localStorage key.
+Replace "הבטיח לשלם" with "ממתין לתשלום".
+Add optional expected payment date per customer (ISO string, stored in CustomerStatus).
+Date shown only when status = "מועמד לתשלום"; hidden but preserved for all other statuses.
+Migrate existing localStorage entries silently on read.
 
 ---
 
@@ -20,19 +21,15 @@ Manual note input. Persisted in separate localStorage key.
 
 | Item | Result |
 |------|--------|
-| `src/types/activity.ts` — `ActivityType`, `ActivityEntry`, `ActivityLog` | Done ✓ |
-| `pure-collections:activity` localStorage key (survives imports) | Done ✓ |
-| Auto-entry on status change: `סטטוס שונה מ"X" ל"Y"` | Done ✓ |
-| Auto-entry on WhatsApp open: `טיוטת WhatsApp נפתחה` | Done ✓ |
-| Auto-entry on email open: `טיוטת אימייל נפתחה` | Done ✓ |
-| Manual note input with "הוסף" button + Enter key support | Done ✓ |
-| "יומן פעילות" section in Customer Panel | Done ✓ |
-| Entries displayed newest-first | Done ✓ |
-| Empty state: `אין פעילות מתועדת עדיין` | Done ✓ |
-| Per-entry icon (◎ W @ •) + color by type | Done ✓ |
-| Timestamp on each entry (he-IL short date + time) | Done ✓ |
-| `key={customerName}` on ActivitySection — resets note input on customer switch | Done ✓ |
-| Stale closure avoided — status change and activity logged in single setState | Done ✓ |
+| Replace `"הבטיח לשלם"` → `"ממתין לתשלום"` in union + array | Done ✓ |
+| `expectedPaymentDate?: string` added to `CustomerStatus` | Done ✓ |
+| Migrate-on-read in `readStatuses()` — writes back if changed | Done ✓ |
+| `handleSaveExpectedDate` in AppShell | Done ✓ |
+| Date picker in StatusSection (shown only for "מועמד לתשלום") | Done ✓ |
+| Auto-save on `onChange`, no extra button | Done ✓ |
+| Date hidden but preserved on status change | Done ✓ |
+| All style maps updated (STATUS_PILL, STATUS_ROW_BORDER, STATUS_CHIP_ACTIVE) | Done ✓ |
+| No new localStorage key | Done ✓ |
 | `npm run lint` | Clean ✓ |
 | `npm run build` | Clean, all pages static ✓ |
 
@@ -40,10 +37,10 @@ Manual note input. Persisted in separate localStorage key.
 
 ## Files Changed
 
-- `src/types/activity.ts` — NEW
-- `src/components/AppShell.tsx` — 4th localStorage key, `handleAddActivity`, inline activity in `handleSaveStatus`
-- `src/components/CollectionsTable.tsx` — `activityLog` + `onAddActivity` props, `customerActivity` memo
-- `src/components/CustomerPanel.tsx` — `ActivitySection`, updated `CommunicationSection`, new props
+- `src/types/status.ts` — renamed status, added `expectedPaymentDate?`
+- `src/components/AppShell.tsx` — migrate-on-read, `handleSaveExpectedDate`, prop passthrough
+- `src/components/CollectionsTable.tsx` — style maps updated, prop threaded
+- `src/components/CustomerPanel.tsx` — date picker in StatusSection, style maps updated
 
 ---
 

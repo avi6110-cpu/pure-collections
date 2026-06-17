@@ -11,6 +11,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.12.0] — 2026-06-17 — Refined Statuses + Expected Payment Date
+
+### Changed
+- `src/types/status.ts` — replaced `"הבטיח לשלם"` with `"ממתין לתשלום"` in `CollectionStatus` union and `ALL_STATUSES`; added `expectedPaymentDate?: string` (ISO "YYYY-MM-DD") to `CustomerStatus`
+- `src/components/AppShell.tsx` — migrate-on-read in `readStatuses()`: detects legacy `"הבטיח לשלם"` entries, remaps to `"ממתין לתשלום"`, writes back immediately (one-time, silent); new `handleSaveExpectedDate(customerName, date)` handler — writes updated `CustomerStatus` without touching other fields; clears field by omitting it rather than storing `undefined`; passes handler to table
+- `src/components/CollectionsTable.tsx` — renamed key in `STATUS_ROW_BORDER` and `STATUS_CHIP_ACTIVE`; threads `onSaveExpectedDate` prop through to `CustomerPanel`
+- `src/components/CustomerPanel.tsx` — renamed key in `STATUS_PILL`; `StatusSection` now renders `type="date"` input below status pills when `effectiveStatus === "מועמד לתשלום"`; auto-saves on `onChange`; hidden for all other statuses; stored date reappears if customer returns to `"מועמד לתשלום"`
+
+### Verified
+- `npm run lint` — clean
+- `npm run build` — clean, all pages static
+
+---
+
 ## [0.11.0] — 2026-06-17 — Customer Activity Timeline
 
 ### Added

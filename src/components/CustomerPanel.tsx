@@ -117,7 +117,7 @@ const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }
     active:   "bg-blue-500 text-white border border-blue-500",
     inactive: "bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100",
   },
-  "הבטיח לשלם":   {
+  "ממתין לתשלום": {
     active:   "bg-amber-500 text-white border border-amber-500",
     inactive: "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100",
   },
@@ -154,9 +154,10 @@ interface CustomerPanelProps {
   onClose:         () => void;
   contact:         CustomerContact | undefined;
   onSaveContact:   (customerName: string, contact: CustomerContact) => void;
-  status:          CustomerStatus | undefined;
-  onSaveStatus:    (customerName: string, status: CollectionStatus) => void;
-  activityEntries: ActivityEntry[];
+  status:             CustomerStatus | undefined;
+  onSaveStatus:       (customerName: string, status: CollectionStatus) => void;
+  onSaveExpectedDate: (customerName: string, date: string | undefined) => void;
+  activityEntries:    ActivityEntry[];
   onAddActivity:   (customerName: string, type: ActivityType, text: string) => void;
 }
 
@@ -170,6 +171,7 @@ export function CustomerPanel({
   onSaveContact,
   status,
   onSaveStatus,
+  onSaveExpectedDate,
   activityEntries,
   onAddActivity,
 }: CustomerPanelProps) {
@@ -229,6 +231,7 @@ export function CustomerPanel({
             customerName={customerName}
             status={status}
             onSaveStatus={onSaveStatus}
+            onSaveExpectedDate={onSaveExpectedDate}
           />
 
           {/* ── Contact section ──────────────────────────────────────────── */}
@@ -294,13 +297,15 @@ export function CustomerPanel({
 // ── StatusSection ───────────────────────────────────────────────────────────
 
 interface StatusSectionProps {
-  customerName: string;
-  status:       CustomerStatus | undefined;
-  onSaveStatus: (customerName: string, status: CollectionStatus) => void;
+  customerName:       string;
+  status:             CustomerStatus | undefined;
+  onSaveStatus:       (customerName: string, status: CollectionStatus) => void;
+  onSaveExpectedDate: (customerName: string, date: string | undefined) => void;
 }
 
-function StatusSection({ customerName, status, onSaveStatus }: StatusSectionProps) {
+function StatusSection({ customerName, status, onSaveStatus, onSaveExpectedDate }: StatusSectionProps) {
   const effectiveStatus: CollectionStatus = status?.status ?? "לא טופל";
+  const expectedPaymentDate = status?.expectedPaymentDate;
 
   return (
     <div className="shrink-0 border-b border-gray-200 px-5 py-4">
@@ -324,6 +329,18 @@ function StatusSection({ customerName, status, onSaveStatus }: StatusSectionProp
           );
         })}
       </div>
+
+      {effectiveStatus === "מועמד לתשלום" && (
+        <div className="mt-3 flex items-center gap-3">
+          <label className="shrink-0 text-xs text-gray-400">תאריך תשלום צפוי</label>
+          <input
+            type="date"
+            value={expectedPaymentDate ?? ""}
+            onChange={(e) => onSaveExpectedDate(customerName, e.target.value || undefined)}
+            className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none"
+          />
+        </div>
+      )}
     </div>
   );
 }
