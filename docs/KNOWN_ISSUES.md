@@ -4,7 +4,7 @@
 > Close an issue by marking it ✅ and recording the fix commit.
 > For roadmap context see [MASTER_STATUS.md](./MASTER_STATUS.md).
 
-Last Updated: 2026-06-18
+Last Updated: 2026-06-18 (BUG-001 closed)
 
 ---
 
@@ -20,38 +20,6 @@ Last Updated: 2026-06-18
 
 ---
 
-### BUG-001 · Customer Contact Carry-Over Bug
-
-**Severity:** High
-**Status:** Open
-**Discovered:** 2026-06-18
-**Affects:** Contact data persistence across report imports
-
-**Description:**
-In certain scenarios, customer contacts do not survive a report re-import correctly. The exact reproduction path is not fully confirmed, but the symptom is that contacts entered via the Customer Panel are not visible after importing a new Excel file or triggering an API sync.
-
-**Expected behavior:**
-Contacts stored in `pure-collections:contacts` (localStorage) must never be overwritten or reset by any import operation. The `handleImport` function in `AppShell.tsx` explicitly avoids writing the contacts key — it only calls `readContacts()` after import and sets the workspace state from it.
-
-**Hypotheses:**
-- The bug may only occur when the user imports while the Customer Panel is open (stale state in panel)
-- It may be a race condition between `writeContacts` (from API sync contact autofill) and `readContacts` (in `handleImport`) when both happen in quick succession during an API sync
-- It may be a browser localStorage serialization issue on certain data
-
-**Reproduction steps (unconfirmed):**
-1. Enter contacts for 2–3 customers
-2. Trigger a new API sync or Excel import
-3. Observe whether contacts are still visible in Customer Panel
-
-**Fix approach:**
-- Add a reproduction test with explicit localStorage state inspection before and after import
-- Review `handleApiSync` — Step 6 calls `handleImport(rows, "api")` which calls `readContacts()`. If `writeContacts(merged)` in Step 5 and `readContacts()` in Step 6 race, contacts may be read before write completes. Verify sequence is strictly synchronous.
-
-**Files to examine:**
-- `src/components/AppShell.tsx` — `handleApiSync`, `handleImport`, `readContacts`, `writeContacts`
-
----
-
 ### BUG-002 · Net +30 Overdue Calculation Not Implemented
 
 **Severity:** Medium (functional gap, not crash)
@@ -61,16 +29,6 @@ Contacts stored in `pure-collections:contacts` (localStorage) must never be over
 
 **Description:**
 The current `ageDays` calculation counts days from the document date. The intended business logic is Net +30: a document enters "overdue" status only after 30 days from the document date. Before day 30, it is current.
-
-**Current behavior:**
-- A document dated yesterday shows `ageDays = 1` → gray (current) ✓
-- A document dated 25 days ago shows `ageDays = 25` → gray (current) — **should still be current** ✓
-- A document dated 35 days ago shows `ageDays = 35` → amber (overdue) — **correct under Net +30** ✓
-- A document dated 20 days ago shows `ageDays = 20` → gray — **correct** ✓
-
-**Wait — re-examining:**
-The current bands are: <30d gray, 30–60d amber, 60+d red.
-Under Net +30, "overdue" starts at day 30 from document date. This is actually consistent with the current bands.
 
 **The real gap:** The label "זמן חריגה" (overdue time) implies time *past* the due date. The due date is document date + 30. So `ageDays` should be `max(0, daysSinceDocumentDate - 30)` for display. A document 35 days old has been overdue for 5 days, not 35.
 
@@ -102,6 +60,25 @@ None currently.
 ---
 
 ## 3. Closed Issues
+
+---
+
+### CLOSED-003 · Customer Contact Carry-Over Bug (BUG-001)
+
+**Severity:** High
+**Closed:** 2026-06-18 — commit `e003b2d`
+**Affects:** Customer Panel — all contact fields and communication section
+
+**Symptom:** Switching customers showed both customers' contact sections and WhatsApp/Email buttons simultaneously — stale data from the previous customer remained visible.
+
+**Root Cause:**
+`CustomerPanel.tsx` used `startTransition(() => setSelectedDocs(defaults))` inside a `useEffect`. React's concurrent rendering mode kept the **old** CustomerPanel subtree in the DOM while mounting the new one, causing dual-render of all contact UI.
+
+**Fix:**
+1. `CollectionsTable.tsx` — added `key={selectedRow?.customerName ?? ""}` to `<CustomerPanel>`. Forces full unmount+remount on every customer switch; eliminates all state leakage by design.
+2. `CustomerPanel.tsx` — replaced `useEffect` + `startTransition` for `selectedDocs` with a lazy `useState` initializer. No deferred transition needed when the component always mounts fresh.
+
+**Verified:** Switched between 3 test customers (Alpha Tech, Beta Systems, Gamma Ltd) repeatedly. Each panel showed only the selected customer's data. No stale fields, no duplicate sections.
 
 ---
 

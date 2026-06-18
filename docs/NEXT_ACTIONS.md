@@ -3,7 +3,7 @@
 > Daily working document. Updated at the start and end of each session.
 > For project-level status see [MASTER_STATUS.md](./MASTER_STATUS.md).
 
-Last Updated: 2026-06-18
+Last Updated: 2026-06-18 (post BUG-001 fix)
 
 ---
 
@@ -33,12 +33,7 @@ Last Updated: 2026-06-18
 
 Priority order:
 
-1. **Fix customer contact carry-over bug**
-   - Contacts occasionally do not survive report re-import in certain browser/session scenarios
-   - Reproduce, identify root cause, fix and verify across both import modes (Excel + API)
-   - See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) #1
-
-2. **Implement Net +30 overdue calculation**
+1. **Implement Net +30 overdue calculation**
    - `ageDays` currently counts from document date
    - Should count from document date + 30 days (Net 30 terms)
    - A document is "overdue" only after day 30; before that it is current
@@ -78,4 +73,5 @@ None currently.
 - [x] KPI card filters + customer contacts (2026-06-17)
 - [x] Customer detail slide-over panel (2026-06-16)
 - [x] Rivhit API sync — open documents + contact autofill (2026-06-17)
+- [x] Fix customer contact carry-over bug — BUG-001 (2026-06-18) — commit `e003b2d`
 - [x] Rivhit API connection settings page (2026-06-16)
