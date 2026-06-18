@@ -4,7 +4,7 @@
 > Close an issue by marking it ✅ and recording the fix commit.
 > For roadmap context see [MASTER_STATUS.md](./MASTER_STATUS.md).
 
-Last Updated: 2026-06-18 (BUG-001 closed)
+Last Updated: 2026-06-18 (BUG-001 + BUG-002 closed)
 
 ---
 
@@ -18,38 +18,7 @@ Last Updated: 2026-06-18 (BUG-001 closed)
 
 ## 1. Open Issues
 
----
-
-### BUG-002 · Net +30 Overdue Calculation Not Implemented
-
-**Severity:** Medium (functional gap, not crash)
-**Status:** Open
-**Discovered:** 2026-06-18
-**Affects:** Aging bands, KPI cards, row colors, Customer Panel badges
-
-**Description:**
-The current `ageDays` calculation counts days from the document date. The intended business logic is Net +30: a document enters "overdue" status only after 30 days from the document date. Before day 30, it is current.
-
-**The real gap:** The label "זמן חריגה" (overdue time) implies time *past* the due date. The due date is document date + 30. So `ageDays` should be `max(0, daysSinceDocumentDate - 30)` for display. A document 35 days old has been overdue for 5 days, not 35.
-
-**Impact:**
-- The displayed "זמן חריגה" value overstates overdue time by 30 days for all documents
-- KPI cards showing 60+d documents are actually showing 90+d documents (60 days overdue = 90 days since document date)
-- Customer Panel "max overdue days" is inflated
-
-**Fix approach:**
-In `src/components/CollectionsTable.tsx`, in the `enriched` memo where `ageDays` is computed:
-```ts
-// Current:
-ageDays: Math.floor((now - row.documentDateMs) / MS_PER_DAY)
-
-// Corrected (Net +30):
-ageDays: Math.max(0, Math.floor((now - row.documentDateMs) / MS_PER_DAY) - 30)
-```
-
-Band thresholds remain the same: <30 (overdue <30d), 30–60, 60+.
-
-**Requires decision:** Confirm whether the 30-day offset should apply to all documents or only those without an explicit due date in the Rivhit data.
+None currently.
 
 ---
 
@@ -60,6 +29,23 @@ None currently.
 ---
 
 ## 3. Closed Issues
+
+---
+
+### CLOSED-004 · Net +30 Overdue Calculation Not Implemented (BUG-002)
+
+**Severity:** Medium
+**Closed:** 2026-06-18 — commit `725121a`
+**Affects:** Aging bands, KPI cards, row colors, Customer Panel badges, WhatsApp/email drafts
+
+**Root Cause:** `ageDays` was counting days from document date, not from the due date. The result was that recent invoices showed as yellow/red before the customer was actually late.
+
+**Fix:** Added `computeDueDate()` in `CollectionsTable.tsx`. Due date = end of document month + 30 days (שוטף + 30). `ageDays` now counts days past that due date only. `toBand()` thresholds unchanged — the bands still represent 0–29 / 30–59 / 60+ days of actual overdue time.
+
+**Business impact verified (18/06/2026):**
+- Invoice 25/04/2026 (due 30/05/2026): was yellow (54d old) → now fresh (19d overdue) ✅
+- Invoice 10/05/2026 (due 30/06/2026): was yellow (39d old) → now fresh (due date not yet reached) ✅
+- Invoice 20/03/2026 (due 30/04/2026): was red (89d old) → now yellow (49d overdue) ✅
 
 ---
 
