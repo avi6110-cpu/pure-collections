@@ -1,8 +1,26 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { extractRivhitRows } from "@/lib/parseRivhit";
 import type { RivhitRow } from "@/lib/parseRivhit";
+
+const SETTINGS_KEY = "pure-collections:settings";
+
+function readStoredToken(): string {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return "";
+    return (JSON.parse(raw) as { rivhitApiToken?: string }).rivhitApiToken ?? "";
+  } catch { return ""; }
+}
+
+function saveToken(token: string): void {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const existing = raw ? (JSON.parse(raw) as object) : {};
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...existing, rivhitApiToken: token }));
+  } catch { /* ignore */ }
+}
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
@@ -41,13 +59,21 @@ function validate(file: File): ValidationResult {
 export interface UploadFormProps {
   onImport: (rows: RivhitRow[]) => void;
   onCancel?: () => void;
+  onApiSync?: () => void;
+  syncState?: "idle" | "loading" | "success" | "error";
+  syncError?: string | null;
 }
 
-export function UploadForm({ onImport, onCancel }: UploadFormProps) {
+export function UploadForm({ onImport, onCancel, onApiSync, syncState = "idle", syncError }: UploadFormProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef  = useRef<File | null>(null);
   const [selected,   setSelected]   = useState<SelectedFile | null>(null);
   const [parseState, setParseState] = useState<ParseState>({ status: "idle" });
+  const [token, setToken] = useState("");
+
+  useEffect(() => {
+    setToken(readStoredToken());
+  }, []);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -98,12 +124,47 @@ export function UploadForm({ onImport, onCancel }: UploadFormProps) {
         )}
 
         <h1 className="text-xl font-semibold text-gray-900">ייבוא דוח גבייה</h1>
-        <p className="mt-1 mb-6 text-sm text-gray-500">בחר קובץ Excel מ-Rivhit להעלאה למערכת</p>
+        <p className="mt-1 mb-6 text-sm text-gray-500">בחר כיצד לטעון את הנתונים</p>
+
+        {onApiSync !== undefined && (
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">טוקן API של ריווחית</label>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => {
+                setToken(e.target.value);
+                saveToken(e.target.value);
+              }}
+              placeholder="הכנס טוקן..."
+              dir="ltr"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            />
+            <button
+              type="button"
+              onClick={onApiSync}
+              disabled={syncState === "loading" || token.trim() === ""}
+              className="mt-2 w-full rounded-lg border-2 border-blue-400 bg-blue-50 py-3 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {syncState === "loading" ? "מסנכרן..." : "סנכרן מ-API של ריווחית"}
+            </button>
+            {syncState === "error" && syncError && (
+              <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm text-red-700">{syncError}</p>
+              </div>
+            )}
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-px flex-1 bg-gray-200" />
+              <span className="text-xs text-gray-400">או</span>
+              <div className="h-px flex-1 bg-gray-200" />
+            </div>
+          </div>
+        )}
 
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="w-full rounded-xl border-2 border-dashed border-gray-300 px-8 py-12 text-center transition-colors hover:border-blue-400 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="w-full rounded-xl border-2 border-dashed border-gray-300 px-8 py-8 text-center transition-colors hover:border-blue-400 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <p className="text-sm font-medium text-gray-600">לחץ לבחירת קובץ Excel</p>
           <p className="mt-1 text-xs text-gray-400">.xlsx בלבד · עד 20 MB</p>

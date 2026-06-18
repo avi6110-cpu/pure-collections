@@ -335,6 +335,9 @@ export function AppShell() {
     return (
       <UploadForm
         onImport={handleImport}
+        onApiSync={() => { void handleApiSync(); }}
+        syncState={syncState}
+        syncError={syncError}
         {...(state.canCancel ? { onCancel: handleCancelUpload } : {})}
       />
     );
