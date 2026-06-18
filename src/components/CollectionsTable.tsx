@@ -517,15 +517,16 @@ export function CollectionsTable({
             </tr>
           </thead>
           <tbody className="bg-white">
-            {displayed.map((row, i) => {
+            {displayed.map((row) => {
               const isSelected    =
                 selectedRow?.customerName === row.customerName &&
                 selectedRow?.documentNumber === row.documentNumber;
               const effectiveStatus: CollectionStatus = statuses[row.customerName]?.status ?? "לא טופל";
               const borderClass   = STATUS_ROW_BORDER[effectiveStatus];
+              const rowKey = `${row.customerName}|${row.documentType}|${row.documentNumber}|${row.documentDate}`;
               return (
                 <tr
-                  key={i}
+                  key={rowKey}
                   onClick={() =>
                     setSelectedRow((prev) =>
                       prev?.customerName === row.customerName &&

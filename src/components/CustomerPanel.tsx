@@ -405,7 +405,6 @@ export function CustomerPanel({
 
           {/* ── Contact section ──────────────────────────────────────────── */}
           <ContactSection
-            key={customerName}
             customerName={customerName}
             contact={contact}
             onSaveContact={onSaveContact}
@@ -413,7 +412,6 @@ export function CustomerPanel({
 
           {/* ── Communication actions ─────────────────────────────────────── */}
           <CommunicationSection
-            key={customerName}
             customerName={customerName}
             selectedRows={selectedRows}
             contact={contact}
@@ -462,7 +460,6 @@ export function CustomerPanel({
 
           {/* ── Activity timeline ────────────────────────────────────────── */}
           <ActivitySection
-            key={customerName}
             customerName={customerName}
             entries={activityEntries}
             onAddActivity={onAddActivity}
@@ -696,7 +693,6 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
 }
 
 // ── ContactSection ──────────────────────────────────────────────────────────
-// key={customerName} is set by the parent so state resets when customer changes
 
 interface ContactDraft {
   contactPerson: string;
@@ -803,7 +799,6 @@ function ContactSection({ customerName, contact, onSaveContact }: ContactSection
 }
 
 // ── ActivitySection ─────────────────────────────────────────────────────────
-// key={customerName} is set by the parent so note input resets when customer changes
 
 interface ActivitySectionProps {
   customerName:  string;
