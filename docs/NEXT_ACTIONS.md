@@ -3,7 +3,7 @@
 > Daily working document. Updated at the start and end of each session.
 > For project-level status see [MASTER_STATUS.md](./MASTER_STATUS.md).
 
-Last Updated: 2026-06-18 (BUG-001 + BUG-002 closed)
+Last Updated: 2026-06-18 (Settings page cleaned)
 
 ---
 
@@ -33,12 +33,7 @@ Last Updated: 2026-06-18 (BUG-001 + BUG-002 closed)
 
 Priority order:
 
-1. **Clean Settings page**
-   - Remove developer tool cards (Document.Details, Document.List, Document.Copy) from the production UI
-   - Move to a hidden dev route (`/dev/settings`) or behind a flag
-   - Keep: API token input, connection test, save button
-
-2. **Validate communication flows**
+1. **Validate communication flows**
    - End-to-end test: WhatsApp draft opens correctly with real customer data
    - End-to-end test: Email draft opens correctly in mail client
    - Verify activity log entries are written correctly after each open
@@ -66,6 +61,7 @@ None currently.
 - [x] KPI card filters + customer contacts (2026-06-17)
 - [x] Customer detail slide-over panel (2026-06-16)
 - [x] Rivhit API sync — open documents + contact autofill (2026-06-17)
+- [x] Clean Settings page — moved dev tools to `/dev` (2026-06-18) — commit `3c6b233`
 - [x] Implement Net +30 overdue calculation — BUG-002 (2026-06-18) — commit `725121a`
 - [x] Fix customer contact carry-over bug — BUG-001 (2026-06-18) — commit `e003b2d`
 - [x] Rivhit API connection settings page (2026-06-16)
