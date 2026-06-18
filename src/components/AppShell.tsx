@@ -7,7 +7,13 @@ import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { UploadForm } from "@/components/UploadForm";
 import { CollectionsTable } from "@/components/CollectionsTable";
-import { parseApiResponse, extractApiError } from "@/lib/parseRivhitApi";
+import {
+  parseApiResponse,
+  extractApiError,
+  extractCustomerIds,
+  parseCustomerList,
+} from "@/lib/parseRivhitApi";
+import type { ApiContactFields } from "@/lib/parseRivhitApi";
 
 const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
@@ -19,6 +25,12 @@ const SETTINGS_KEY = "pure-collections:settings";
 
 export type ImportSource = "api" | "excel";
 type SyncState = "idle" | "loading" | "success" | "error";
+
+export interface SyncStats {
+  documents: number;
+  contactsWritten: number;
+  contactSyncFailed: boolean;
+}
 
 interface StoredReport {
   importedAt:   number;
@@ -111,6 +123,7 @@ export function AppShell() {
   const [state,     setState]     = useState<AppState>({ mode: "loading" });
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncStats, setSyncStats] = useState<SyncStats | null>(null);
 
   useEffect(() => {
     const stored      = readReport();
@@ -149,6 +162,7 @@ export function AppShell() {
   async function handleApiSync() {
     setSyncState("loading");
     setSyncError(null);
+    setSyncStats(null);
 
     const token = readToken();
     if (!token) {
@@ -158,20 +172,18 @@ export function AppShell() {
     }
 
     try {
-      const res = await fetch("/api/rivhit/customer-open-documents", {
+      // ── Step 1: Fetch open documents ────────────────────────────────────
+      const docRes = await fetch("/api/rivhit/customer-open-documents", {
         method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "X-Rivhit-Token": token,
-        },
+        headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
         body: JSON.stringify({}),
       });
-      const data: unknown = await res.json();
+      const docData: unknown = await docRes.json();
 
-      const rows = parseApiResponse(data);
+      const rows = parseApiResponse(docData);
       if (rows === null) {
         setSyncState("error");
-        setSyncError(extractApiError(data));
+        setSyncError(extractApiError(docData));
         return;
       }
       if (rows.length === 0) {
@@ -180,9 +192,61 @@ export function AppShell() {
         return;
       }
 
+      // ── Step 2: Extract customer_id → name from raw document response ───
+      const customerIdMap = extractCustomerIds(docData);
+
+      // ── Step 3: Fetch Customer.List (failure here must not abort sync) ──
+      let contactsWritten = 0;
+      let contactSyncFailed = false;
+
+      try {
+        const listRes = await fetch("/api/rivhit/customer-list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+          body: JSON.stringify({}),
+        });
+        const listData: unknown = await listRes.json();
+        const customerListMap = parseCustomerList(listData);
+
+        // ── Step 4: Join by customer_id → Map<customerName, contactFields> ─
+        const contactsByName = new Map<string, ApiContactFields>();
+        for (const [id, name] of customerIdMap) {
+          const fields = customerListMap.get(id);
+          if (fields !== undefined) contactsByName.set(name, fields);
+        }
+
+        // ── Step 5: Merge into existing contacts (fill-blanks-only) ────────
+        const existing = readContacts();
+        const merged: ContactMap = { ...existing };
+
+        for (const [name, apiFields] of contactsByName) {
+          const cur = merged[name];
+          const hasPhone = (cur?.phone ?? "").trim() !== "";
+          const hasEmail = (cur?.email ?? "").trim() !== "";
+          const fillPhone = !hasPhone && apiFields.phone !== "";
+          const fillEmail = !hasEmail && apiFields.email !== "";
+          if (fillPhone || fillEmail) {
+            merged[name] = {
+              ...(cur ?? { updatedAt: 0 }),
+              ...(fillPhone ? { phone: apiFields.phone } : {}),
+              ...(fillEmail ? { email: apiFields.email } : {}),
+              updatedAt: Date.now(),
+            };
+            contactsWritten++;
+          }
+        }
+
+        // Write merged contacts BEFORE handleImport so it reads them back
+        if (contactsWritten > 0) writeContacts(merged);
+      } catch {
+        contactSyncFailed = true;
+      }
+
+      // ── Step 6: Import documents (reads freshly merged contacts) ────────
       handleImport(rows, "api");
+      const stats: SyncStats = { documents: rows.length, contactsWritten, contactSyncFailed };
+      setSyncStats(stats);
       setSyncState("success");
-      // Auto-clear success indicator after 4 seconds
       setTimeout(() => setSyncState("idle"), 4000);
     } catch (err) {
       setSyncState("error");
@@ -285,6 +349,7 @@ export function AppShell() {
       onApiSync={() => { void handleApiSync(); }}
       syncState={syncState}
       syncError={syncError}
+      syncStats={syncStats}
       contacts={state.contacts}
       onSaveContact={handleSaveContact}
       statuses={state.statuses}

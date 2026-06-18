@@ -7,6 +7,15 @@ import type { CollectionStatus, CustomerStatus } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityEntry, ActivityType } from "@/types/activity";
 
+// ── Invisible-character sanitizer ────────────────────────────────────────────
+// Rivhit embeds RTL marks and zero-width chars in strings. trim() misses them
+// and they corrupt mailto: URLs. Same set as parseRivhitApi.ts INVIS_RE.
+const STRIP_INVIS = /[­​‌‍‎‏﻿]/g;
+
+function stripInvis(s: string): string {
+  return s.replace(STRIP_INVIS, "").trim();
+}
+
 // ── Document key ─────────────────────────────────────────────────────────────
 // Composite key — different document types can share a number, so use all three fields.
 function docKey(doc: EnrichedRow): string {
@@ -214,7 +223,10 @@ function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[],
     `PURE WATER ISRAEL`,
   ].join("\n");
 
-  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // Strip invisible Unicode chars (RTL marks, ZW spaces) that Rivhit embeds in strings
+  // and corrupt the mailto: URL even though .trim() misses them.
+  const safeEmail = email.replace(STRIP_INVIS, "").trim();
+  return `mailto:${safeEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 // ── Styling maps ────────────────────────────────────────────────────────────
@@ -403,6 +415,7 @@ export function CustomerPanel({
 
           {/* ── Communication actions ─────────────────────────────────────── */}
           <CommunicationSection
+            key={customerName}
             customerName={customerName}
             selectedRows={selectedRows}
             contact={contact}
@@ -543,9 +556,6 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   const waDisabled = !phone || noSelected || busy;
   const emDisabled = !email || noSelected || busy;
 
-  const waTitle = noSelected ? "לא נבחרו מסמכים לשליחה" : !phone ? "הוסף טלפון בפרטי הקשר" : undefined;
-  const emTitle = noSelected ? "לא נבחרו מסמכים לשליחה" : !email ? "הוסף אימייל בפרטי הקשר" : undefined;
-
   // Runs the full link-fetch sequence, painting each step to the UI before
   // proceeding. Returns the map of docKey → URL (empty if anything fails).
   async function fetchLinksWithSteps(): Promise<Map<string, string>> {
@@ -633,7 +643,7 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   return (
     <div className="shrink-0 border-b border-gray-200 px-5 py-3">
       <div className="flex gap-3">
-        <div className="flex-1" {...(waTitle ? { title: waTitle } : {})}>
+        <div className="flex-1">
           <button
             type="button"
             onClick={() => { void handleWhatsApp(); }}
@@ -643,7 +653,7 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
             {busy ? "מכין קישורים..." : "WhatsApp"}
           </button>
         </div>
-        <div className="flex-1" {...(emTitle ? { title: emTitle } : {})}>
+        <div className="flex-1">
           <button
             type="button"
             onClick={() => { void handleEmail(); }}
@@ -655,7 +665,27 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
         </div>
       </div>
 
-      {/* ── Debug panel — temporary ─────────────────────────────────────── */}
+      {/* ── Disabled reason hints ─────────────────────────────────────────── */}
+      {!busy && (waDisabled || emDisabled) && (
+        <div className="mt-2 space-y-0.5 text-xs text-gray-500">
+          {waDisabled && (
+            <p>
+              {noSelected
+                ? "לא ניתן לשלוח WhatsApp — יש לבחור לפחות מסמך אחד לשליחה."
+                : "לא ניתן לשלוח WhatsApp — לא קיים מספר טלפון ללקוח זה."}
+            </p>
+          )}
+          {emDisabled && (
+            <p>
+              {noSelected
+                ? "לא ניתן לשלוח מייל — יש לבחור לפחות מסמך אחד לשליחה."
+                : "לא ניתן לשלוח מייל — לא קיימת כתובת מייל ללקוח זה."}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── Link-fetch steps panel ────────────────────────────────────────── */}
       {steps !== null && (
         <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-mono text-xs text-blue-900">
           {steps.map((s, i) => (
@@ -712,7 +742,7 @@ function ContactSection({ customerName, contact, onSaveContact }: ContactSection
     const saved: CustomerContact = { updatedAt: Date.now() };
     const cp = draft.contactPerson.trim();
     const ph = draft.phone.trim();
-    const em = draft.email.trim();
+    const em = stripInvis(draft.email);
     const no = draft.notes.trim();
     if (cp.length > 0) saved.contactPerson = cp;
     if (ph.length > 0) saved.phone = ph;

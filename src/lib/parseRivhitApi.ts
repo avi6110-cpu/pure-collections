@@ -188,3 +188,86 @@ export function extractApiError(data: unknown): string {
   }
   return "תגובה לא צפויה מה-API";
 }
+
+// ── Customer contact helpers ──────────────────────────────────────────────────
+
+// Removes invisible Unicode characters that Israeli accounting systems embed in strings.
+// Standard .trim() only strips ASCII whitespace — these survive and corrupt mailto: URLs.
+// ­ soft-hyphen, ​ zero-width space, ‌‍ ZW non/joiner,
+// ‎‏ LTR/RTL marks, ﻿ BOM.
+const INVIS_RE = new RegExp("[­​‌‍‎‏﻿]", "g");
+
+export interface ApiContactFields {
+  phone: string;
+  email: string;
+}
+
+/** Finds the first array that looks like a customer list. */
+function findCustomerArray(data: unknown): Record<string, unknown>[] | null {
+  if (Array.isArray(data)) {
+    if (data.length === 0) return [];
+    const first: unknown = data[0];
+    if (first !== null && typeof first === "object") {
+      const rec = first as Record<string, unknown>;
+      const hasId = "customer_id" in rec || "customerId" in rec || "client_id" in rec;
+      const hasContact =
+        "phone" in rec || "email" in rec ||
+        "customer_name" in rec || "customerName" in rec;
+      if (hasId && hasContact) return data as Record<string, unknown>[];
+    }
+  }
+  if (data !== null && typeof data === "object") {
+    for (const val of Object.values(data as Record<string, unknown>)) {
+      const found = findCustomerArray(val);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Extracts a Map of customer_id → customerName from a raw
+ * Customer.OpenDocuments response. Used to join document records
+ * with contact data from Customer.List.
+ */
+export function extractCustomerIds(data: unknown): Map<number, string> {
+  const result = new Map<number, string>();
+  const docArray = findDocumentArray(data);
+  if (docArray === null) return result;
+  for (const doc of docArray) {
+    const idRaw = pickCI(doc, "customer_id", "customerId", "client_id", "clientId");
+    const nameRaw = pickCI(doc, "customer_name", "customerName", "client_name", "contact_name");
+    const id = Number(idRaw ?? 0);
+    const name = String(nameRaw ?? "").trim();
+    if (id > 0 && name) result.set(id, name);
+  }
+  return result;
+}
+
+/**
+ * Parses a raw Customer.List response into a Map of
+ * customer_id → { phone, email }.
+ * Returns an empty map on any error or missing data.
+ */
+export function parseCustomerList(data: unknown): Map<number, ApiContactFields> {
+  const result = new Map<number, ApiContactFields>();
+  if (data === null || typeof data !== "object") return result;
+  const rec = data as Record<string, unknown>;
+  if (typeof rec["error_code"] === "number" && rec["error_code"] !== 0) return result;
+  if (typeof rec["error"] === "string") return result;
+  const arr = findCustomerArray(data);
+  if (arr === null) return result;
+  for (const customer of arr) {
+    const idRaw = pickCI(customer, "customer_id", "customerId", "client_id", "clientId");
+    const id = Number(idRaw ?? 0);
+    if (id <= 0) continue;
+    const phone = String(
+      pickCI(customer, "phone", "phone_number", "phone1", "telephone") ?? "",
+    ).replace(INVIS_RE, "").trim();
+    const email = String(
+      pickCI(customer, "email", "email_address", "e_mail", "mail") ?? "",
+    ).replace(INVIS_RE, "").trim();
+    result.set(id, { phone, email });
+  }
+  return result;
+}

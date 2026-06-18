@@ -9,7 +9,7 @@ import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { CustomerPanel } from "@/components/CustomerPanel";
-import type { ImportSource } from "@/components/AppShell";
+import type { ImportSource, SyncStats } from "@/components/AppShell";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -173,6 +173,7 @@ interface CollectionsTableProps {
   onApiSync:    () => void;
   syncState:    "idle" | "loading" | "success" | "error";
   syncError:    string | null;
+  syncStats:    SyncStats | null;
   contacts: ContactMap;
   onSaveContact: (customerName: string, contact: CustomerContact) => void;
   statuses: StatusMap;
@@ -190,6 +191,7 @@ export function CollectionsTable({
   onApiSync,
   syncState,
   syncError,
+  syncStats,
   contacts,
   onSaveContact,
   statuses,
@@ -374,7 +376,17 @@ export function CollectionsTable({
         )}
         {syncState === "success" && (
           <div className="border-t border-green-100 bg-green-50 px-6 py-1.5 text-xs text-green-700">
-            ✓ סונכרן בהצלחה מ-Rivhit API
+            {syncStats !== null
+              ? [
+                  `✓ סונכרן מ-Rivhit — ${syncStats.documents} מסמכים`,
+                  syncStats.contactSyncFailed
+                    ? "קשר לקוחות לא עודכן"
+                    : syncStats.contactsWritten > 0
+                    ? `${syncStats.contactsWritten} אנשי קשר עודכנו`
+                    : "פרטי קשר כבר מעודכנים",
+                ].join(" · ")
+              : "✓ סונכרן בהצלחה מ-Rivhit API"
+            }
           </div>
         )}
       </header>
@@ -498,7 +510,9 @@ export function CollectionsTable({
           </thead>
           <tbody className="bg-white">
             {displayed.map((row, i) => {
-              const isSelected    = selectedRow?.documentNumber === row.documentNumber;
+              const isSelected    =
+                selectedRow?.customerName === row.customerName &&
+                selectedRow?.documentNumber === row.documentNumber;
               const effectiveStatus: CollectionStatus = statuses[row.customerName]?.status ?? "לא טופל";
               const borderClass   = STATUS_ROW_BORDER[effectiveStatus];
               return (
@@ -506,7 +520,10 @@ export function CollectionsTable({
                   key={i}
                   onClick={() =>
                     setSelectedRow((prev) =>
-                      prev?.documentNumber === row.documentNumber ? null : row
+                      prev?.customerName === row.customerName &&
+                      prev?.documentNumber === row.documentNumber
+                        ? null
+                        : row
                     )
                   }
                   className={`border-b border-gray-100 cursor-pointer transition-colors ${
