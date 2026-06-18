@@ -9,6 +9,7 @@ import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { CustomerPanel } from "@/components/CustomerPanel";
+import type { ImportSource } from "@/components/AppShell";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -166,8 +167,12 @@ function SecondaryCard({ label, value, count, variant, onClick, isActive }: Seco
 
 interface CollectionsTableProps {
   rows: RivhitRow[];
-  importedAt: number;
-  onNewImport: () => void;
+  importedAt:   number;
+  importSource: ImportSource;
+  onNewImport:  () => void;
+  onApiSync:    () => void;
+  syncState:    "idle" | "loading" | "success" | "error";
+  syncError:    string | null;
   contacts: ContactMap;
   onSaveContact: (customerName: string, contact: CustomerContact) => void;
   statuses: StatusMap;
@@ -180,7 +185,11 @@ interface CollectionsTableProps {
 export function CollectionsTable({
   rows,
   importedAt,
+  importSource,
   onNewImport,
+  onApiSync,
+  syncState,
+  syncError,
   contacts,
   onSaveContact,
   statuses,
@@ -304,27 +313,70 @@ export function CollectionsTable({
     <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
 
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-        <div className="flex items-baseline gap-3">
-          <span className="text-base font-bold tracking-tight text-gray-900">PURE COLLECTIONS</span>
-          <span className="text-sm text-gray-400">דוחות גבייה</span>
+      <header className="shrink-0 border-b border-gray-200 bg-white">
+        <div className="flex items-center justify-between px-6 py-3">
+          <div className="flex items-baseline gap-3">
+            <span className="text-base font-bold tracking-tight text-gray-900">PURE COLLECTIONS</span>
+            <span className="text-sm text-gray-400">דוחות גבייה</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <span>עודכן: {fmtImportDate(importedAt)}</span>
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  importSource === "api"
+                    ? "bg-indigo-100 text-indigo-700"
+                    : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {importSource === "api" ? "API" : "Excel"}
+              </span>
+            </div>
+            <Link
+              href="/settings"
+              className="text-sm text-gray-400 hover:text-gray-600"
+            >
+              הגדרות
+            </Link>
+            <button
+              type="button"
+              onClick={onNewImport}
+              className="text-sm text-gray-400 hover:text-gray-600"
+            >
+              ייבוא Excel
+            </button>
+            <button
+              type="button"
+              onClick={onApiSync}
+              disabled={syncState === "loading"}
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              {syncState === "loading" && (
+                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                </svg>
+              )}
+              {syncState === "loading" ? "מסנכרן…" : "סנכרן מרווחית"}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-gray-400">עודכן: {fmtImportDate(importedAt)}</span>
-          <Link
-            href="/settings"
-            className="text-sm text-gray-400 hover:text-gray-600"
-          >
-            הגדרות
-          </Link>
-          <button
-            type="button"
-            onClick={onNewImport}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-          >
-            ייבוא דוח חדש
-          </button>
-        </div>
+        {/* Sync error / success strip */}
+        {syncState === "error" && syncError !== null && (
+          <div className="border-t border-red-100 bg-red-50 px-6 py-1.5 text-xs text-red-600">
+            שגיאת סנכרון: {syncError}
+            {syncError.includes("הגדרות") && (
+              <Link href="/settings" className="mr-2 font-medium underline">
+                → הגדרות
+              </Link>
+            )}
+          </div>
+        )}
+        {syncState === "success" && (
+          <div className="border-t border-green-100 bg-green-50 px-6 py-1.5 text-xs text-green-700">
+            ✓ סונכרן בהצלחה מ-Rivhit API
+          </div>
+        )}
       </header>
 
       {/* ── Summary strip ───────────────────────────────────────────────── */}

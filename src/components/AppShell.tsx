@@ -7,27 +7,36 @@ import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { UploadForm } from "@/components/UploadForm";
 import { CollectionsTable } from "@/components/CollectionsTable";
+import { parseApiResponse, extractApiError } from "@/lib/parseRivhitApi";
 
 const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
 const STATUSES_KEY = "pure-collections:status";
 const ACTIVITY_KEY = "pure-collections:activity";
+const SETTINGS_KEY = "pure-collections:settings";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export type ImportSource = "api" | "excel";
+type SyncState = "idle" | "loading" | "success" | "error";
 
 interface StoredReport {
-  importedAt: number;
-  rows: RivhitRow[];
+  importedAt:   number;
+  rows:         RivhitRow[];
+  importSource?: ImportSource;
 }
 
 type AppState =
   | { mode: "loading" }
   | { mode: "upload"; canCancel: boolean }
   | {
-      mode:        "workspace";
-      rows:        RivhitRow[];
-      importedAt:  number;
-      contacts:    ContactMap;
-      statuses:    StatusMap;
-      activityLog: ActivityLog;
+      mode:         "workspace";
+      rows:         RivhitRow[];
+      importedAt:   number;
+      importSource: ImportSource;
+      contacts:     ContactMap;
+      statuses:     StatusMap;
+      activityLog:  ActivityLog;
     };
 
 // ── localStorage helpers ─────────────────────────────────────────────────────
@@ -87,14 +96,22 @@ function writeActivity(log: ActivityLog): void {
   localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log));
 }
 
+function readToken(): string {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { rivhitApiToken?: string };
+    return parsed.rivhitApiToken ?? "";
+  } catch { return ""; }
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function AppShell() {
-  const [state, setState] = useState<AppState>({ mode: "loading" });
+  const [state,     setState]     = useState<AppState>({ mode: "loading" });
+  const [syncState, setSyncState] = useState<SyncState>("idle");
+  const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Read all localStorage keys after hydration to avoid SSR mismatch.
-  // startTransition wraps setState so it lives in a callback, not the direct
-  // effect body — satisfying react-hooks/set-state-in-effect.
   useEffect(() => {
     const stored      = readReport();
     const contacts    = readContacts();
@@ -103,24 +120,81 @@ export function AppShell() {
     startTransition(() => {
       setState(
         stored
-          ? { mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts, statuses, activityLog }
-          : { mode: "upload", canCancel: false }
+          ? {
+              mode:         "workspace",
+              rows:         stored.rows,
+              importedAt:   stored.importedAt,
+              importSource: stored.importSource ?? "excel",
+              contacts,
+              statuses,
+              activityLog,
+            }
+          : { mode: "upload", canCancel: false },
       );
     });
   }, []);
 
-  function handleImport(rows: RivhitRow[]) {
-    const importedAt  = Date.now();
-    writeReport({ importedAt, rows });
+  function handleImport(rows: RivhitRow[], source: ImportSource = "excel") {
+    const importedAt = Date.now();
+    writeReport({ importedAt, rows, importSource: source });
     // Contacts, statuses, and activity are NEVER overwritten on import
     const contacts    = readContacts();
     const statuses    = readStatuses();
     const activityLog = readActivity();
-    setState({ mode: "workspace", rows, importedAt, contacts, statuses, activityLog });
+    startTransition(() =>
+      setState({ mode: "workspace", rows, importedAt, importSource: source, contacts, statuses, activityLog }),
+    );
+  }
+
+  async function handleApiSync() {
+    setSyncState("loading");
+    setSyncError(null);
+
+    const token = readToken();
+    if (!token) {
+      setSyncState("error");
+      setSyncError("טוקן API לא מוגדר — עבור להגדרות");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/rivhit/customer-open-documents", {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "X-Rivhit-Token": token,
+        },
+        body: JSON.stringify({}),
+      });
+      const data: unknown = await res.json();
+
+      const rows = parseApiResponse(data);
+      if (rows === null) {
+        setSyncState("error");
+        setSyncError(extractApiError(data));
+        return;
+      }
+      if (rows.length === 0) {
+        setSyncState("error");
+        setSyncError("ה-API לא החזיר מסמכים פתוחים");
+        return;
+      }
+
+      handleImport(rows, "api");
+      setSyncState("success");
+      // Auto-clear success indicator after 4 seconds
+      setTimeout(() => setSyncState("idle"), 4000);
+    } catch (err) {
+      setSyncState("error");
+      setSyncError(err instanceof Error ? err.message : "שגיאת רשת");
+    }
   }
 
   function handleRequestNewImport() {
-    setState({ mode: "upload", canCancel: true });
+    setState((prev) => {
+      if (prev.mode === "loading") return prev;
+      return { mode: "upload", canCancel: prev.mode === "workspace" };
+    });
   }
 
   function handleCancelUpload() {
@@ -129,7 +203,17 @@ export function AppShell() {
     const statuses    = readStatuses();
     const activityLog = readActivity();
     if (stored) {
-      setState({ mode: "workspace", rows: stored.rows, importedAt: stored.importedAt, contacts, statuses, activityLog });
+      startTransition(() =>
+        setState({
+          mode:         "workspace",
+          rows:         stored.rows,
+          importedAt:   stored.importedAt,
+          importSource: stored.importSource ?? "excel",
+          contacts,
+          statuses,
+          activityLog,
+        }),
+      );
     }
   }
 
@@ -137,31 +221,27 @@ export function AppShell() {
     if (state.mode !== "workspace") return;
     const contacts: ContactMap = { ...state.contacts, [customerName]: contact };
     writeContacts(contacts);
-    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts, statuses: state.statuses, activityLog: state.activityLog });
+    setState({ ...state, contacts });
   }
 
   function handleSaveStatus(customerName: string, status: CollectionStatus) {
     if (state.mode !== "workspace") return;
 
-    // Treat missing entry as the implicit default "לא טופל"
-    const prevStatus  = state.statuses[customerName]?.status;
-    const fromStatus: CollectionStatus = prevStatus ?? "לא טופל";
-
+    const prevStatus: CollectionStatus = state.statuses[customerName]?.status ?? "לא טופל";
     const newEntry: CustomerStatus = { status, updatedAt: Date.now() };
     const statuses: StatusMap = { ...state.statuses, [customerName]: newEntry };
     writeStatuses(statuses);
 
-    // Inline activity entry — single setState avoids stale-closure conflicts
     let activityLog = state.activityLog;
-    if (fromStatus !== status) {
-      const text = `סטטוס שונה מ"${fromStatus}" ל"${status}"`;
+    if (prevStatus !== status) {
+      const text = `סטטוס שונה מ"${prevStatus}" ל"${status}"`;
       const entry: ActivityEntry = { id: crypto.randomUUID(), type: "status_changed", text, createdAt: Date.now() };
       const existing = activityLog[customerName] ?? [];
       activityLog = { ...activityLog, [customerName]: [...existing, entry] };
       writeActivity(activityLog);
     }
 
-    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts: state.contacts, statuses, activityLog });
+    setState({ ...state, statuses, activityLog });
   }
 
   function handleSaveExpectedDate(customerName: string, date: string | undefined) {
@@ -173,7 +253,7 @@ export function AppShell() {
       : { status: existing.status, updatedAt: existing.updatedAt };
     const statuses: StatusMap = { ...state.statuses, [customerName]: newEntry };
     writeStatuses(statuses);
-    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts: state.contacts, statuses, activityLog: state.activityLog });
+    setState({ ...state, statuses });
   }
 
   function handleAddActivity(customerName: string, type: ActivityType, text: string) {
@@ -182,7 +262,7 @@ export function AppShell() {
     const existing = state.activityLog[customerName] ?? [];
     const activityLog: ActivityLog = { ...state.activityLog, [customerName]: [...existing, entry] };
     writeActivity(activityLog);
-    setState({ mode: "workspace", rows: state.rows, importedAt: state.importedAt, contacts: state.contacts, statuses: state.statuses, activityLog });
+    setState({ ...state, activityLog });
   }
 
   if (state.mode === "loading") return null;
@@ -200,7 +280,11 @@ export function AppShell() {
     <CollectionsTable
       rows={state.rows}
       importedAt={state.importedAt}
+      importSource={state.importSource}
       onNewImport={handleRequestNewImport}
+      onApiSync={() => { void handleApiSync(); }}
+      syncState={syncState}
+      syncError={syncError}
       contacts={state.contacts}
       onSaveContact={handleSaveContact}
       statuses={state.statuses}
