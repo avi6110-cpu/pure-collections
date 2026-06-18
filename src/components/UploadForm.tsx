@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { extractRivhitRows } from "@/lib/parseRivhit";
 import type { RivhitRow } from "@/lib/parseRivhit";
 
@@ -69,11 +69,9 @@ export function UploadForm({ onImport, onCancel, onApiSync, syncState = "idle", 
   const fileRef  = useRef<File | null>(null);
   const [selected,   setSelected]   = useState<SelectedFile | null>(null);
   const [parseState, setParseState] = useState<ParseState>({ status: "idle" });
-  const [token, setToken] = useState("");
-
-  useEffect(() => {
-    setToken(readStoredToken());
-  }, []);
+  const [token, setToken] = useState<string>(() =>
+    typeof window !== "undefined" ? readStoredToken() : ""
+  );
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

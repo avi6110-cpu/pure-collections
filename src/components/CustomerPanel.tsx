@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EnrichedRow } from "@/types/collections";
 import type { CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, CustomerStatus } from "@/types/status";
@@ -320,16 +320,14 @@ export function CustomerPanel({
   }, [clickedRow, onClose]);
 
   // ── Document selection state ───────────────────────────────────────────────
-  // Default: documents ≥ 30 days overdue are selected; fresh (<30d) are not.
-  // Resets whenever the customer changes (customerName "" = panel closed).
-  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  // Initialized from customerRows on mount. Because CollectionsTable gives this
+  // component key={customerName}, it fully remounts on every customer switch, so
+  // this initializer always runs fresh — no useEffect reset needed.
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(
+    () => new Set(customerRows.filter((r) => r.ageDays >= 30).map(docKey))
+  );
 
   const customerName = clickedRow?.customerName ?? "";
-
-  useEffect(() => {
-    const defaults = new Set(customerRows.filter((r) => r.ageDays >= 30).map(docKey));
-    startTransition(() => setSelectedDocs(defaults));
-  }, [customerName, customerRows]);
 
   // Rows currently checked — passed to message builders
   const selectedRows = useMemo(

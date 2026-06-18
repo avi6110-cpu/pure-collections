@@ -581,7 +581,12 @@ export function CollectionsTable({
       </div>
 
       {/* ── Customer detail panel ────────────────────────────────────────── */}
+      {/* key ensures full remount — and therefore a complete state reset —
+          whenever the selected customer changes. Without this, internal state
+          (selectedDocs, edit drafts, communication steps) from the previous
+          customer survives the prop update and leaks into the next customer's view. */}
       <CustomerPanel
+        key={selectedRow?.customerName ?? ""}
         customerRows={customerRows}
         clickedRow={selectedRow}
         onClose={closePanel}
