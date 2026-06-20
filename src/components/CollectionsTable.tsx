@@ -3,9 +3,10 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { RivhitRow } from "@/lib/parseRivhit";
+import { docStatusKey } from "@/lib/parseRivhit";
 import type { AgingBand, EnrichedRow } from "@/types/collections";
 import type { ContactMap, CustomerContact } from "@/types/contacts";
-import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status";
+import type { CollectionStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { CustomerPanel } from "@/components/CustomerPanel";
@@ -57,6 +58,7 @@ const ROW_BG: Record<AgingBand, string> = {
 };
 
 const ROW_BG_SELECTED = "bg-blue-50 hover:bg-blue-100";
+const ROW_BG_PAID     = "bg-green-50 hover:bg-green-100";
 
 const AGE_BADGE: Record<AgingBand, string> = {
   fresh:  "bg-gray-100 text-gray-600",
@@ -75,7 +77,7 @@ const STATUS_ROW_BORDER: Record<CollectionStatus, string> = {
   "שולם":         "border-r-4 border-green-400",
 };
 
-// Chip active state colors (same palette as StatusSection in CustomerPanel)
+// Chip active state colors (same palette as DocCard in CustomerPanel)
 const STATUS_CHIP_ACTIVE: Record<CollectionStatus, string> = {
   "לא טופל":      "bg-gray-500 text-white",
   "בטיפול":       "bg-blue-500 text-white",
@@ -132,7 +134,7 @@ function PrimaryCard({ value, sub, onClick }: { value: string; sub: string; onCl
       onClick={onClick}
       className="flex w-full flex-col justify-between rounded-xl border border-blue-300 bg-blue-600 px-6 py-4 text-right text-white shadow-sm transition-colors hover:bg-blue-700"
     >
-      <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">יתרה לגבייה מיידית</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">יתרה לגבייה פעילה</p>
       <p className="mt-1 text-3xl font-bold tabular-nums leading-none">{value}</p>
       <p className="mt-2 text-xs text-blue-300">{sub}</p>
     </button>
@@ -185,8 +187,8 @@ interface CollectionsTableProps {
   contacts: ContactMap;
   onSaveContact: (customerName: string, contact: CustomerContact) => void;
   statuses: StatusMap;
-  onSaveStatus: (customerName: string, status: CollectionStatus) => void;
-  onSaveExpectedDate: (customerName: string, date: string | undefined) => void;
+  onSaveStatus: (docKey: string, status: CollectionStatus) => void;
+  onSaveExpectedDate: (docKey: string, date: string | undefined) => void;
   activityLog:   ActivityLog;
   onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
 }
@@ -245,7 +247,7 @@ export function CollectionsTable({
     [rows]
   );
 
-  // Summary always reflects the full unfiltered report
+  // Summary always reflects active (non-שולם) documents only
   const summary = useMemo(() => {
     let totalBalance  = 0;
     let balanceFresh  = 0;
@@ -254,26 +256,48 @@ export function CollectionsTable({
     let countFresh    = 0;
     let count30to60   = 0;
     let count60plus   = 0;
+    let paidCount     = 0;
+
     for (const r of enriched) {
+      if (statuses[docStatusKey(r)]?.status === "שולם") {
+        paidCount++;
+        continue;
+      }
       totalBalance += r.remainingBalance;
       if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++; }
       if (r.band === "yellow") { balance30to60 += r.remainingBalance; count30to60++; }
       if (r.band === "red")    { balance60plus += r.remainingBalance; count60plus++; }
     }
-    return { totalRows: enriched.length, totalBalance, balanceFresh, countFresh, balance30to60, balance60plus, count30to60, count60plus };
-  }, [enriched]);
 
-  // 1. Band filter
+    const activeRows = enriched.length - paidCount;
+    return {
+      totalRows: enriched.length,
+      activeRows,
+      paidCount,
+      totalBalance,
+      balanceFresh,
+      countFresh,
+      balance30to60,
+      balance60plus,
+      count30to60,
+      count60plus,
+    };
+  }, [enriched, statuses]);
+
+  // 1. Band filter — "שולם" docs are excluded when a specific band is active
   const bandFiltered: EnrichedRow[] = useMemo(() => {
     if (activeFilter === "all") return enriched;
-    return enriched.filter((r) => r.band === activeFilter);
-  }, [enriched, activeFilter]);
+    return enriched.filter((r) => {
+      if (statuses[docStatusKey(r)]?.status === "שולם") return false;
+      return r.band === activeFilter;
+    });
+  }, [enriched, activeFilter, statuses]);
 
   // 2. Status filter — undefined entry treated as "לא טופל"
   const statusFiltered: EnrichedRow[] = useMemo(() => {
     if (activeStatusFilter === "all") return bandFiltered;
     return bandFiltered.filter((r) => {
-      const entry = statuses[r.customerName];
+      const entry = statuses[docStatusKey(r)];
       if (activeStatusFilter === "לא טופל") {
         return entry === undefined || entry.status === "לא טופל";
       }
@@ -293,11 +317,12 @@ export function CollectionsTable({
     );
   }, [statusFiltered, query]);
 
-  // 4. Sort
-  const displayed: EnrichedRow[] = useMemo(
-    () => sortRows(filtered, sortCol, sortDir),
-    [filtered, sortCol, sortDir]
-  );
+  // 4. Sort, then push "שולם" rows to the bottom
+  const displayed: EnrichedRow[] = useMemo(() => {
+    const sorted = sortRows(filtered, sortCol, sortDir);
+    const isPaid = (r: EnrichedRow) => statuses[docStatusKey(r)]?.status === "שולם";
+    return [...sorted.filter((r) => !isPaid(r)), ...sorted.filter((r) => isPaid(r))];
+  }, [filtered, sortCol, sortDir, statuses]);
 
   // All open docs for the selected customer — always from full enriched set
   const customerRows: EnrichedRow[] = useMemo(
@@ -310,9 +335,6 @@ export function CollectionsTable({
 
   const customerContact: CustomerContact | undefined =
     selectedRow !== null ? contacts[selectedRow.customerName] : undefined;
-
-  const customerStatus: CustomerStatus | undefined =
-    selectedRow !== null ? statuses[selectedRow.customerName] : undefined;
 
   const customerActivity: ActivityEntry[] =
     selectedRow !== null ? (activityLog[selectedRow.customerName] ?? []) : [];
@@ -404,7 +426,7 @@ export function CollectionsTable({
         <div className="grid grid-cols-4 gap-4">
           <PrimaryCard
             value={fmtCurrency(summary.totalBalance)}
-            sub={`${summary.totalRows} רשומות בדוח`}
+            sub={`${summary.activeRows} פעילים${summary.paidCount > 0 ? ` · ${summary.paidCount} שולם` : ""}`}
             onClick={() => handleFilterClick("all")}
           />
           <SecondaryCard
@@ -518,11 +540,18 @@ export function CollectionsTable({
           </thead>
           <tbody className="bg-white">
             {displayed.map((row) => {
-              const isSelected    =
+              const isSelected      =
                 selectedRow?.customerName === row.customerName &&
                 selectedRow?.documentNumber === row.documentNumber;
-              const effectiveStatus: CollectionStatus = statuses[row.customerName]?.status ?? "לא טופל";
-              const borderClass   = STATUS_ROW_BORDER[effectiveStatus];
+              const effectiveStatus: CollectionStatus =
+                statuses[docStatusKey(row)]?.status ?? "לא טופל";
+              const isPaid       = effectiveStatus === "שולם";
+              const borderClass  = STATUS_ROW_BORDER[effectiveStatus];
+              const rowBg        = isSelected
+                ? ROW_BG_SELECTED
+                : isPaid
+                ? ROW_BG_PAID
+                : ROW_BG[row.band];
               const rowKey = `${row.customerName}|${row.documentType}|${row.documentNumber}|${row.documentDate}`;
               return (
                 <tr
@@ -535,9 +564,7 @@ export function CollectionsTable({
                         : row
                     )
                   }
-                  className={`border-b border-gray-100 cursor-pointer transition-colors ${
-                    isSelected ? ROW_BG_SELECTED : ROW_BG[row.band]
-                  }`}
+                  className={`border-b border-gray-100 cursor-pointer transition-colors ${rowBg} ${isPaid ? "opacity-70" : ""}`}
                 >
                   {/* שם לקוח — carries the status border stripe on its right edge */}
                   <td className={`max-w-xs truncate whitespace-nowrap px-4 py-2.5 text-right font-medium text-gray-900 ${borderClass}`}>
@@ -549,6 +576,8 @@ export function CollectionsTable({
                     <span
                       className={`text-base font-bold tabular-nums ${
                         row.remainingBalance < 0
+                          ? "text-green-700"
+                          : isPaid
                           ? "text-green-700"
                           : row.band === "red"
                           ? "text-red-700"
@@ -601,7 +630,7 @@ export function CollectionsTable({
         onClose={closePanel}
         contact={customerContact}
         onSaveContact={onSaveContact}
-        status={customerStatus}
+        statuses={statuses}
         onSaveStatus={onSaveStatus}
         onSaveExpectedDate={onSaveExpectedDate}
         activityEntries={customerActivity}

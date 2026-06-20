@@ -13,10 +13,11 @@ export const ALL_STATUSES: CollectionStatus[] = [
   "שולם",
 ];
 
-export interface CustomerStatus {
+export interface DocumentStatus {
   status:               CollectionStatus;
-  updatedAt:            number; // Unix ms
-  expectedPaymentDate?: string; // ISO "YYYY-MM-DD", stored per customer, survives status changes
+  updatedAt:            number;
+  expectedPaymentDate?: string;
 }
 
-export type StatusMap = Record<string, CustomerStatus>;
+// Keyed by docStatusKey: `${customerName}|${documentType}|${documentNumber}`
+export type StatusMap = Record<string, DocumentStatus>;

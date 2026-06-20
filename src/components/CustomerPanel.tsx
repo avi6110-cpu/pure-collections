@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { EnrichedRow } from "@/types/collections";
+import { docStatusKey } from "@/lib/parseRivhit";
 import type { CustomerContact } from "@/types/contacts";
-import type { CollectionStatus, CustomerStatus } from "@/types/status";
+import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityEntry, ActivityType } from "@/types/activity";
 
@@ -16,8 +17,7 @@ function stripInvis(s: string): string {
   return s.replace(STRIP_INVIS, "").trim();
 }
 
-// ── Document key ─────────────────────────────────────────────────────────────
-// Composite key — different document types can share a number, so use all three fields.
+// ── Document key for checkbox set (includes date for uniqueness within panel) ─
 function docKey(doc: EnrichedRow): string {
   return `${doc.documentType}|${doc.documentNumber}|${doc.documentDate}`;
 }
@@ -51,8 +51,6 @@ function normalizePhone(raw: string): string {
 
 // ── Rivhit document link fetching ───────────────────────────────────────────
 
-// Maps the human-readable document type name (from the Rivhit export) to its
-// numeric document_type ID used by the Rivhit API. Discovered via Document.TypeList.
 const DOC_TYPE_NUM: Readonly<Record<string, number>> = {
   "חשבונית מס":        1,
   "חשבונית מס קבלה":  2,
@@ -71,9 +69,6 @@ function readToken(): string {
   }
 }
 
-// Recursively scans any value in a Rivhit response and returns the first
-// http(s) URL string found. Same strategy as the settings page analysis —
-// does not rely on a specific field name.
 function extractFirstUrl(data: unknown): string | null {
   if (typeof data === "string") return /^https?:\/\//.test(data) ? data : null;
   if (Array.isArray(data)) {
@@ -102,7 +97,6 @@ async function fetchDocumentLink(
   documentType: string,
   documentNumber: number,
 ): Promise<LinkResult> {
-  // Trim defensively — Rivhit exports sometimes have trailing whitespace
   const typeKey = documentType.trim();
   const typeNum = DOC_TYPE_NUM[typeKey];
   if (typeNum === undefined) {
@@ -138,8 +132,6 @@ interface LinksResult {
   tokenFound: boolean;
 }
 
-// Fetches a document_link for each row in parallel. Per-document failures are
-// captured in debugLines and do not block the message from sending.
 async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<LinksResult> {
   const token = readToken();
   if (!token) {
@@ -166,7 +158,6 @@ async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<LinksResult> {
 
 // ── Message builders ─────────────────────────────────────────────────────────
 
-// Builds a WhatsApp draft from the caller-supplied rows (already filtered to selection)
 function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: Map<string, string>): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
@@ -205,7 +196,6 @@ function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[],
   });
 
   const subject = `תזכורת תשלום — ${customerName}`;
-
   const body = [
     `שלום ${customerName},`,
     ``,
@@ -223,8 +213,6 @@ function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[],
     `PURE WATER ISRAEL`,
   ].join("\n");
 
-  // Strip invisible Unicode chars (RTL marks, ZW spaces) that Rivhit embeds in strings
-  // and corrupt the mailto: URL even though .trim() misses them.
   const safeEmail = email.replace(STRIP_INVIS, "").trim();
   return `mailto:${safeEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -288,9 +276,9 @@ interface CustomerPanelProps {
   onClose:            () => void;
   contact:            CustomerContact | undefined;
   onSaveContact:      (customerName: string, contact: CustomerContact) => void;
-  status:             CustomerStatus | undefined;
-  onSaveStatus:       (customerName: string, status: CollectionStatus) => void;
-  onSaveExpectedDate: (customerName: string, date: string | undefined) => void;
+  statuses:           StatusMap;
+  onSaveStatus:       (docKey: string, status: CollectionStatus) => void;
+  onSaveExpectedDate: (docKey: string, date: string | undefined) => void;
   activityEntries:    ActivityEntry[];
   onAddActivity:      (customerName: string, type: ActivityType, text: string) => void;
 }
@@ -303,7 +291,7 @@ export function CustomerPanel({
   onClose,
   contact,
   onSaveContact,
-  status,
+  statuses,
   onSaveStatus,
   onSaveExpectedDate,
   activityEntries,
@@ -320,16 +308,18 @@ export function CustomerPanel({
   }, [clickedRow, onClose]);
 
   // ── Document selection state ───────────────────────────────────────────────
-  // Initialized from customerRows on mount. Because CollectionsTable gives this
-  // component key={customerName}, it fully remounts on every customer switch, so
-  // this initializer always runs fresh — no useEffect reset needed.
+  // Initialized from customerRows on mount — remount on customer switch resets state.
+  // "שולם" docs are excluded from the initial selection (don't include paid in reminders).
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(
-    () => new Set(customerRows.filter((r) => r.ageDays >= 30).map(docKey))
+    () => new Set(
+      customerRows
+        .filter((r) => r.ageDays >= 30 && statuses[docStatusKey(r)]?.status !== "שולם")
+        .map(docKey)
+    )
   );
 
   const customerName = clickedRow?.customerName ?? "";
 
-  // Rows currently checked — passed to message builders
   const selectedRows = useMemo(
     () => customerRows.filter((r) => selectedDocs.has(docKey(r))),
     [customerRows, selectedDocs]
@@ -346,7 +336,12 @@ export function CustomerPanel({
   }
 
   function selectAll() {
-    setSelectedDocs(new Set(customerRows.map(docKey)));
+    // Exclude "שולם" docs from "select all" — they're paid and shouldn't be in reminders
+    setSelectedDocs(new Set(
+      customerRows
+        .filter((r) => statuses[docStatusKey(r)]?.status !== "שולם")
+        .map(docKey)
+    ));
   }
 
   function deselectAll() {
@@ -355,14 +350,26 @@ export function CustomerPanel({
 
   // ── Derived values ────────────────────────────────────────────────────────
 
-  const totalBalance  = customerRows.reduce((s, r) => s + r.remainingBalance, 0);
-  const docCount      = customerRows.length;
-  const maxAgeDays    = customerRows.reduce((m, r) => Math.max(m, r.ageDays), 0);
-  const balance60plus = customerRows
+  // Summary shows active (non-שולם) totals only
+  const activeDocs = customerRows.filter((r) => statuses[docStatusKey(r)]?.status !== "שולם");
+  const paidDocs   = customerRows.filter((r) => statuses[docStatusKey(r)]?.status === "שולם");
+
+  const totalBalance  = activeDocs.reduce((s, r) => s + r.remainingBalance, 0);
+  const docCount      = activeDocs.length;
+  const maxAgeDays    = activeDocs.reduce((m, r) => Math.max(m, r.ageDays), 0);
+  const balance60plus = activeDocs
     .filter((r) => r.band === "red")
     .reduce((s, r) => s + r.remainingBalance, 0);
 
-  const sortedDocs = [...customerRows].sort((a, b) => b.ageDays - a.ageDays);
+  // Active docs first (sorted by age desc), then paid docs at the bottom
+  const sortedDocs = useMemo(() => {
+    const byAge = (a: EnrichedRow, b: EnrichedRow) => b.ageDays - a.ageDays;
+    return [
+      ...activeDocs.slice().sort(byAge),
+      ...paidDocs.slice().sort(byAge),
+    ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerRows, statuses]);
 
   return (
     <div
@@ -395,14 +402,6 @@ export function CustomerPanel({
             </button>
           </div>
 
-          {/* ── Collection status ────────────────────────────────────────── */}
-          <StatusSection
-            customerName={customerName}
-            status={status}
-            onSaveStatus={onSaveStatus}
-            onSaveExpectedDate={onSaveExpectedDate}
-          />
-
           {/* ── Contact section ──────────────────────────────────────────── */}
           <ContactSection
             customerName={customerName}
@@ -421,9 +420,9 @@ export function CustomerPanel({
           {/* ── Customer summary ─────────────────────────────────────────── */}
           <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-4">
             <div className="grid grid-cols-2 gap-3">
-              <SummaryItem label="יתרה כוללת"          value={fmtCurrency(totalBalance)} size="large" />
-              <SummaryItem label="מסמכים פתוחים"       value={String(docCount)} />
-              <SummaryItem label="זמן חריגה מקסימלי"   value={`${maxAgeDays} יום`} />
+              <SummaryItem label="יתרה פעילה"            value={fmtCurrency(totalBalance)} size="large" />
+              <SummaryItem label="מסמכים פעילים"          value={paidDocs.length > 0 ? `${docCount} (${paidDocs.length} שולם)` : String(docCount)} />
+              <SummaryItem label="זמן חריגה מקסימלי"      value={`${maxAgeDays} יום`} />
               <SummaryItem
                 label="יתרה 60+ יום"
                 value={balance60plus > 0 ? fmtCurrency(balance60plus) : "—"}
@@ -436,12 +435,12 @@ export function CustomerPanel({
           <div className="flex-1 overflow-y-auto px-5 py-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                {docCount === 1 ? "מסמך פתוח אחד" : `${docCount} מסמכים פתוחים`}
+                {customerRows.length === 1 ? "מסמך פתוח אחד" : `${customerRows.length} מסמכים`}
               </p>
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-gray-400">{selectedRows.length} ייכללו</span>
                 <span className="text-gray-300">·</span>
-                <button type="button" onClick={selectAll}  className="text-blue-600 hover:text-blue-800">בחר הכל</button>
+                <button type="button" onClick={selectAll}   className="text-blue-600 hover:text-blue-800">בחר הכל</button>
                 <button type="button" onClick={deselectAll} className="text-gray-500 hover:text-gray-700">נקה</button>
               </div>
             </div>
@@ -450,9 +449,12 @@ export function CustomerPanel({
                 <DocCard
                   key={docKey(doc)}
                   doc={doc}
-                  isClicked={doc.documentNumber === clickedRow.documentNumber}
+                  isClicked={doc.documentNumber === clickedRow.documentNumber && doc.documentType === clickedRow.documentType}
                   isSelected={selectedDocs.has(docKey(doc))}
                   onToggle={() => toggleDoc(doc)}
+                  docStatus={statuses[docStatusKey(doc)]}
+                  onSaveStatus={onSaveStatus}
+                  onSaveExpectedDate={onSaveExpectedDate}
                 />
               ))}
             </div>
@@ -471,62 +473,11 @@ export function CustomerPanel({
   );
 }
 
-// ── StatusSection ───────────────────────────────────────────────────────────
-
-interface StatusSectionProps {
-  customerName:       string;
-  status:             CustomerStatus | undefined;
-  onSaveStatus:       (customerName: string, status: CollectionStatus) => void;
-  onSaveExpectedDate: (customerName: string, date: string | undefined) => void;
-}
-
-function StatusSection({ customerName, status, onSaveStatus, onSaveExpectedDate }: StatusSectionProps) {
-  const effectiveStatus: CollectionStatus = status?.status ?? "לא טופל";
-  const expectedPaymentDate = status?.expectedPaymentDate;
-
-  return (
-    <div className="shrink-0 border-b border-gray-200 px-5 py-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-        סטטוס גבייה
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {ALL_STATUSES.map((s) => {
-          const isActive = effectiveStatus === s;
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onSaveStatus(customerName, s)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                isActive ? STATUS_PILL[s].active : STATUS_PILL[s].inactive
-              }`}
-            >
-              {s}
-            </button>
-          );
-        })}
-      </div>
-
-      {effectiveStatus === "מועמד לתשלום" && (
-        <div className="mt-3 flex items-center gap-3">
-          <label className="shrink-0 text-xs text-gray-400">תאריך תשלום צפוי</label>
-          <input
-            type="date"
-            value={expectedPaymentDate ?? ""}
-            onChange={(e) => onSaveExpectedDate(customerName, e.target.value || undefined)}
-            className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-1.5 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none"
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── CommunicationSection ────────────────────────────────────────────────────
 
 interface CommunicationSectionProps {
   customerName:  string;
-  selectedRows:  EnrichedRow[]; // only the documents checked for inclusion
+  selectedRows:  EnrichedRow[];
   contact:       CustomerContact | undefined;
   onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
 }
@@ -538,8 +489,6 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   const [busy, setBusy]   = useState(false);
   const [steps, setSteps] = useState<string[] | null>(null);
 
-  // Yields to the event loop so React can flush the latest state update
-  // and paint the step to the screen before the next step runs.
   function tick(): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 0));
   }
@@ -551,13 +500,10 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   const waDisabled = !phone || noSelected || busy;
   const emDisabled = !email || noSelected || busy;
 
-  // Runs the full link-fetch sequence, painting each step to the UI before
-  // proceeding. Returns the map of docKey → URL (empty if anything fails).
   async function fetchLinksWithSteps(): Promise<Map<string, string>> {
     setSteps(["1. מתחיל להביא קישורים..."]);
     await tick();
 
-    // Diagnostic: show exactly what is (or isn't) in localStorage
     const rawStorage = localStorage.getItem("pure-collections:settings");
     if (rawStorage === null) {
       addStep("⚠️ localStorage key 'pure-collections:settings' לא קיים");
@@ -660,7 +606,6 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
         </div>
       </div>
 
-      {/* ── Disabled reason hints ─────────────────────────────────────────── */}
       {!busy && (waDisabled || emDisabled) && (
         <div className="mt-2 space-y-0.5 text-xs text-gray-500">
           {waDisabled && (
@@ -680,7 +625,6 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
         </div>
       )}
 
-      {/* ── Link-fetch steps panel ────────────────────────────────────────── */}
       {steps !== null && (
         <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-mono text-xs text-blue-900">
           {steps.map((s, i) => (
@@ -866,6 +810,132 @@ function ActivitySection({ customerName, entries, onAddActivity }: ActivitySecti
   );
 }
 
+// ── DocCard ─────────────────────────────────────────────────────────────────
+
+interface DocCardProps {
+  doc:                EnrichedRow;
+  isClicked:          boolean;
+  isSelected:         boolean;
+  onToggle:           () => void;
+  docStatus:          DocumentStatus | undefined;
+  onSaveStatus:       (docKey: string, status: CollectionStatus) => void;
+  onSaveExpectedDate: (docKey: string, date: string | undefined) => void;
+}
+
+function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate }: DocCardProps) {
+  const [statusOpen, setStatusOpen] = useState(false);
+
+  const effectiveStatus: CollectionStatus = docStatus?.status ?? "לא טופל";
+  const isPaid = effectiveStatus === "שולם";
+  const statusKey = docStatusKey(doc);
+
+  const cardBg =
+    isClicked
+      ? "border-blue-300 bg-blue-50"
+      : isPaid
+      ? "bg-green-50 border-green-200"
+      : CARD_BG[doc.band];
+
+  const balanceColor =
+    doc.remainingBalance < 0
+      ? "text-green-700"
+      : isPaid
+      ? "text-green-700"
+      : doc.band === "red"
+      ? "text-red-700"
+      : "text-gray-900";
+
+  return (
+    <div className="flex items-start gap-2">
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={onToggle}
+        className="mt-[14px] h-4 w-4 shrink-0 cursor-pointer accent-indigo-600"
+      />
+      {/* Clicking the card body toggles selection; status area stops propagation */}
+      <div
+        className={`flex-1 cursor-pointer rounded-lg border px-4 py-3 transition-opacity ${cardBg} ${!isSelected && !isPaid ? "opacity-40" : ""}`}
+        onClick={onToggle}
+      >
+        {/* Row 1: document type + number | balance */}
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-right text-sm font-semibold text-gray-900">
+            {doc.documentType}
+            <span className="mx-1 text-gray-300">·</span>
+            <span className="font-normal tabular-nums text-gray-600">{doc.documentNumber}</span>
+          </p>
+          <p className={`shrink-0 text-left text-sm font-bold tabular-nums ${balanceColor}`}>
+            {fmtCurrency(doc.remainingBalance)}
+          </p>
+        </div>
+
+        {/* Row 2: date + due date | age badge */}
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p className="text-right text-xs text-gray-500">
+            {doc.documentDate}
+            {doc.dueDate !== "" && <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>}
+          </p>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}>
+            {doc.ageDays} יום
+          </span>
+        </div>
+
+        {/* Row 3: per-document status picker — click stops card-toggle propagation */}
+        <div
+          className="mt-2.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {statusOpen ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {ALL_STATUSES.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { onSaveStatus(statusKey, s); setStatusOpen(false); }}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                    s === effectiveStatus ? STATUS_PILL[s].active : STATUS_PILL[s].inactive
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setStatusOpen(false)}
+                className="rounded-full px-2 py-0.5 text-xs text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setStatusOpen(true)}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_PILL[effectiveStatus].active}`}
+            >
+              {effectiveStatus} ▾
+            </button>
+          )}
+
+          {/* Expected payment date — visible only when status is "מועמד לתשלום" */}
+          {effectiveStatus === "מועמד לתשלום" && !statusOpen && (
+            <div className="mt-2 flex items-center gap-2">
+              <label className="shrink-0 text-xs text-gray-400">תאריך תשלום צפוי</label>
+              <input
+                type="date"
+                value={docStatus?.expectedPaymentDate ?? ""}
+                onChange={(e) => onSaveExpectedDate(statusKey, e.target.value || undefined)}
+                className="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-xs focus:border-indigo-500 focus:bg-white focus:outline-none"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Shared sub-components ───────────────────────────────────────────────────
 
 function EditField({ label, value, onChange, type = "text" }: {
@@ -910,49 +980,5 @@ function SummaryItem({ label, value, size, variant }: SummaryItemProps) {
         {value}
       </p>
     </div>
-  );
-}
-
-interface DocCardProps {
-  doc:        EnrichedRow;
-  isClicked:  boolean;
-  isSelected: boolean;
-  onToggle:   () => void;
-}
-
-function DocCard({ doc, isClicked, isSelected, onToggle }: DocCardProps) {
-  const cardBg      = isClicked ? "border-blue-300 bg-blue-50" : CARD_BG[doc.band];
-  const balanceColor = doc.remainingBalance < 0 ? "text-green-700" : doc.band === "red" ? "text-red-700" : "text-gray-900";
-
-  return (
-    <label className="flex cursor-pointer items-start gap-2">
-      <input
-        type="checkbox"
-        checked={isSelected}
-        onChange={onToggle}
-        className="mt-[14px] h-4 w-4 shrink-0 accent-indigo-600"
-      />
-      <div className={`flex-1 rounded-lg border px-4 py-3 transition-opacity ${cardBg} ${!isSelected ? "opacity-40" : ""}`}>
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-right text-sm font-semibold text-gray-900">
-            {doc.documentType}
-            <span className="mx-1 text-gray-300">·</span>
-            <span className="font-normal tabular-nums text-gray-600">{doc.documentNumber}</span>
-          </p>
-          <p className={`shrink-0 text-left text-sm font-bold tabular-nums ${balanceColor}`}>
-            {fmtCurrency(doc.remainingBalance)}
-          </p>
-        </div>
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          <p className="text-right text-xs text-gray-500">
-            {doc.documentDate}
-            {doc.dueDate !== "" && <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>}
-          </p>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}>
-            {doc.ageDays} יום
-          </span>
-        </div>
-      </div>
-    </label>
   );
 }

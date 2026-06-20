@@ -2,8 +2,9 @@
 
 import { startTransition, useEffect, useState } from "react";
 import type { RivhitRow } from "@/lib/parseRivhit";
+import { docStatusKey } from "@/lib/parseRivhit";
 import type { ContactMap, CustomerContact } from "@/types/contacts";
-import type { CollectionStatus, CustomerStatus, StatusMap } from "@/types/status";
+import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { UploadForm } from "@/components/UploadForm";
 import { CollectionsTable } from "@/components/CollectionsTable";
@@ -75,26 +76,66 @@ function writeContacts(contacts: ContactMap): void {
   localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
 }
 
+function writeStatuses(statuses: StatusMap): void {
+  localStorage.setItem(STATUSES_KEY, JSON.stringify(statuses));
+}
+
 function readStatuses(): StatusMap {
   try {
     const raw = localStorage.getItem(STATUSES_KEY);
     if (!raw) return {};
-    const map = JSON.parse(raw) as StatusMap;
-    // One-time migration: "הבטיח לשלם" (removed status) → "ממתין לתשלום"
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    const keys = Object.keys(parsed);
+    if (keys.length === 0) return {};
+
+    // Detect old customer-level format: no key contains "|"
+    const isOldFormat = !keys.some((k) => k.includes("|"));
+
+    if (isOldFormat) {
+      // Migrate to document-level by applying each customer's status to all
+      // of their documents in the current stored report.
+      const report = readReport();
+      if (!report || report.rows.length === 0) {
+        localStorage.removeItem(STATUSES_KEY);
+        return {};
+      }
+
+      type OldEntry = { status: CollectionStatus; updatedAt: number; expectedPaymentDate?: string };
+      const old = parsed as Record<string, OldEntry>;
+      const newStatuses: StatusMap = {};
+
+      for (const row of report.rows) {
+        const customerStat = old[row.customerName];
+        // "לא טופל" is the default — no need to store it
+        if (!customerStat || customerStat.status === "לא טופל") continue;
+        const key = docStatusKey(row);
+        newStatuses[key] = {
+          status:    customerStat.status,
+          updatedAt: customerStat.updatedAt,
+          ...(customerStat.expectedPaymentDate
+            ? { expectedPaymentDate: customerStat.expectedPaymentDate }
+            : {}),
+        };
+      }
+
+      writeStatuses(newStatuses);
+      return newStatuses;
+    }
+
+    // New document-level format — apply "הבטיח לשלם" rename if present
+    const map = parsed as StatusMap;
     let migrated = false;
-    for (const name of Object.keys(map)) {
-      const entry = map[name];
+    for (const key of Object.keys(map)) {
+      const entry = map[key];
       if (entry && (entry.status as string) === "הבטיח לשלם") {
-        map[name] = { ...entry, status: "ממתין לתשלום" };
+        map[key] = { ...entry, status: "ממתין לתשלום" };
         migrated = true;
       }
     }
     if (migrated) writeStatuses(map);
     return map;
   } catch { return {}; }
-}
-function writeStatuses(statuses: StatusMap): void {
-  localStorage.setItem(STATUSES_KEY, JSON.stringify(statuses));
 }
 
 function readActivity(): ActivityLog {
@@ -288,18 +329,38 @@ export function AppShell() {
     setState({ ...state, contacts });
   }
 
-  function handleSaveStatus(customerName: string, status: CollectionStatus) {
+  // docKey format: `${customerName}|${documentType}|${documentNumber}`
+  function handleSaveStatus(docKey: string, status: CollectionStatus) {
     if (state.mode !== "workspace") return;
 
-    const prevStatus: CollectionStatus = state.statuses[customerName]?.status ?? "לא טופל";
-    const newEntry: CustomerStatus = { status, updatedAt: Date.now() };
-    const statuses: StatusMap = { ...state.statuses, [customerName]: newEntry };
+    const prevEntry  = state.statuses[docKey];
+    const prevStatus: CollectionStatus = prevEntry?.status ?? "לא טופל";
+
+    const newEntry: DocumentStatus = {
+      status,
+      updatedAt: Date.now(),
+      ...(prevEntry?.expectedPaymentDate ? { expectedPaymentDate: prevEntry.expectedPaymentDate } : {}),
+    };
+    const statuses: StatusMap = { ...state.statuses, [docKey]: newEntry };
     writeStatuses(statuses);
 
     let activityLog = state.activityLog;
     if (prevStatus !== status) {
-      const text = `סטטוס שונה מ"${prevStatus}" ל"${status}"`;
-      const entry: ActivityEntry = { id: crypto.randomUUID(), type: "status_changed", text, createdAt: Date.now() };
+      // Extract customer name and document label from the key
+      const firstPipe  = docKey.indexOf("|");
+      const customerName = firstPipe >= 0 ? docKey.slice(0, firstPipe) : docKey;
+      const rest       = firstPipe >= 0 ? docKey.slice(firstPipe + 1) : "";
+      const lastPipe   = rest.lastIndexOf("|");
+      const docType    = lastPipe >= 0 ? rest.slice(0, lastPipe) : rest;
+      const docNum     = lastPipe >= 0 ? rest.slice(lastPipe + 1) : "";
+
+      const text  = `${docType} ${docNum}: סטטוס שונה מ"${prevStatus}" ל"${status}"`;
+      const entry: ActivityEntry = {
+        id: crypto.randomUUID(),
+        type: "status_changed",
+        text,
+        createdAt: Date.now(),
+      };
       const existing = activityLog[customerName] ?? [];
       activityLog = { ...activityLog, [customerName]: [...existing, entry] };
       writeActivity(activityLog);
@@ -308,14 +369,13 @@ export function AppShell() {
     setState({ ...state, statuses, activityLog });
   }
 
-  function handleSaveExpectedDate(customerName: string, date: string | undefined) {
+  function handleSaveExpectedDate(docKey: string, date: string | undefined) {
     if (state.mode !== "workspace") return;
-    const existing = state.statuses[customerName];
-    if (!existing) return;
-    const newEntry: CustomerStatus = date
+    const existing = state.statuses[docKey] ?? { status: "לא טופל" as CollectionStatus, updatedAt: Date.now() };
+    const newEntry: DocumentStatus = date
       ? { ...existing, expectedPaymentDate: date }
       : { status: existing.status, updatedAt: existing.updatedAt };
-    const statuses: StatusMap = { ...state.statuses, [customerName]: newEntry };
+    const statuses: StatusMap = { ...state.statuses, [docKey]: newEntry };
     writeStatuses(statuses);
     setState({ ...state, statuses });
   }

@@ -34,6 +34,16 @@ function excelSerialToMs(v: unknown): number {
 }
 
 /**
+ * Stable key used as the StatusMap index.
+ * Does NOT include documentDate — date formatting differs between Excel and API imports.
+ */
+export function docStatusKey(
+  row: Pick<RivhitRow, "customerName" | "documentType" | "documentNumber">,
+): string {
+  return `${row.customerName}|${row.documentType}|${row.documentNumber}`;
+}
+
+/**
  * Accepts raw rows from XLSX.utils.sheet_to_json(ws, { header: 1 }).
  * A row is a real Rivhit data row when column 7 (מס' מסמך) is a number.
  * All other rows are metadata, section headers, or subtotals.
