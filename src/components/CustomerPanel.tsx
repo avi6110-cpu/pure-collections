@@ -87,10 +87,7 @@ function extractFirstUrl(data: unknown): string | null {
   return null;
 }
 
-interface LinkResult {
-  link: string | null;
-  debug: string;
-}
+interface LinkResult { link: string | null; debug: string }
 
 async function fetchDocumentLink(
   token: string,
@@ -99,9 +96,7 @@ async function fetchDocumentLink(
 ): Promise<LinkResult> {
   const typeKey = documentType.trim();
   const typeNum = DOC_TYPE_NUM[typeKey];
-  if (typeNum === undefined) {
-    return { link: null, debug: `סוג "${typeKey}" לא ממופה` };
-  }
+  if (typeNum === undefined) return { link: null, debug: `סוג "${typeKey}" לא ממופה` };
   try {
     const res = await fetch("/api/rivhit/document-list", {
       method: "POST",
@@ -126,17 +121,9 @@ async function fetchDocumentLink(
   }
 }
 
-interface LinksResult {
-  map:        Map<string, string>;
-  debugLines: string[];
-  tokenFound: boolean;
-}
-
-async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<LinksResult> {
+async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<{ map: Map<string, string>; debugLines: string[]; tokenFound: boolean }> {
   const token = readToken();
-  if (!token) {
-    return { map: new Map(), debugLines: ["טוקן לא נמצא — בדוק הגדרות"], tokenFound: false };
-  }
+  if (!token) return { map: new Map(), debugLines: ["טוקן לא נמצא — בדוק הגדרות"], tokenFound: false };
   const settled = await Promise.allSettled(
     rows.map(async (row) => {
       const result = await fetchDocumentLink(token, row.documentType, row.documentNumber);
@@ -161,13 +148,11 @@ async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<LinksResult> {
 function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: Map<string, string>): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
-
   const docLines = sorted.flatMap((r) => {
     const line = `• ${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} (${r.ageDays} יום)`;
     const link = links.get(docKey(r));
     return link !== undefined ? [line, `  🔗 ${link}`] : [line];
   });
-
   return [
     `שלום ${customerName},`,
     ``,
@@ -188,13 +173,11 @@ function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: 
 function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[], links: Map<string, string>): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
-
   const docLines = sorted.flatMap((r) => {
     const line = `${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} — ${r.documentDate} — ${r.ageDays} ימים פיגור`;
     const link = links.get(docKey(r));
     return link !== undefined ? [line, `  🔗 ${link}`] : [line];
   });
-
   const subject = `תזכורת תשלום — ${customerName}`;
   const body = [
     `שלום ${customerName},`,
@@ -212,7 +195,6 @@ function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[],
     `בכבוד רב,`,
     `PURE WATER ISRAEL`,
   ].join("\n");
-
   const safeEmail = email.replace(STRIP_INVIS, "").trim();
   return `mailto:${safeEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -232,41 +214,15 @@ const CARD_BG: Record<EnrichedRow["band"], string> = {
 };
 
 const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }> = {
-  "לא טופל":      {
-    active:   "bg-gray-500 text-white border border-gray-500",
-    inactive: "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100",
-  },
-  "בטיפול":       {
-    active:   "bg-blue-500 text-white border border-blue-500",
-    inactive: "bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100",
-  },
-  "ממתין לתשלום": {
-    active:   "bg-amber-500 text-white border border-amber-500",
-    inactive: "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100",
-  },
-  "מועמד לתשלום": {
-    active:   "bg-indigo-500 text-white border border-indigo-500",
-    inactive: "bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100",
-  },
-  "שולם":         {
-    active:   "bg-green-500 text-white border border-green-500",
-    inactive: "bg-green-50 text-green-600 border border-green-200 hover:bg-green-100",
-  },
+  "לא טופל":      { active: "bg-gray-500 text-white border border-gray-500",     inactive: "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"     },
+  "בטיפול":       { active: "bg-blue-500 text-white border border-blue-500",      inactive: "bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"      },
+  "ממתין לתשלום": { active: "bg-amber-500 text-white border border-amber-500",    inactive: "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100"   },
+  "מועמד לתשלום": { active: "bg-indigo-500 text-white border border-indigo-500",  inactive: "bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100" },
+  "שולם":         { active: "bg-green-500 text-white border border-green-500",    inactive: "bg-green-50 text-green-600 border border-green-200 hover:bg-green-100"   },
 };
 
-const ACTIVITY_ICON: Record<ActivityType, string> = {
-  status_changed:  "◎",
-  whatsapp_opened: "W",
-  email_opened:    "@",
-  manual_note:     "•",
-};
-
-const ACTIVITY_COLOR: Record<ActivityType, string> = {
-  status_changed:  "text-blue-500",
-  whatsapp_opened: "text-green-600",
-  email_opened:    "text-gray-500",
-  manual_note:     "text-amber-500",
-};
+const ACTIVITY_ICON: Record<ActivityType, string>  = { status_changed: "◎", whatsapp_opened: "W", email_opened: "@", manual_note: "•" };
+const ACTIVITY_COLOR: Record<ActivityType, string> = { status_changed: "text-blue-500", whatsapp_opened: "text-green-600", email_opened: "text-gray-500", manual_note: "text-amber-500" };
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -297,19 +253,18 @@ export function CustomerPanel({
   activityEntries,
   onAddActivity,
 }: CustomerPanelProps) {
-  // Close on Escape — only while panel is open
+  // Close on Escape
   useEffect(() => {
     if (!clickedRow) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
+    function handleKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [clickedRow, onClose]);
 
-  // ── Document selection state ───────────────────────────────────────────────
-  // Initialized from customerRows on mount — remount on customer switch resets state.
-  // "שולם" docs are excluded from the initial selection (don't include paid in reminders).
+  // ── Document selection — unchanged business logic ──────────────────────────
+  // "שולם" docs excluded from initial selection; CustomerPanel remounts on
+  // customer switch (key={customerName} in CollectionsTable), so this initializer
+  // always runs fresh.
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(
     () => new Set(
       customerRows
@@ -329,45 +284,33 @@ export function CustomerPanel({
     const key = docKey(doc);
     setSelectedDocs((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   }
 
   function selectAll() {
-    // Exclude "שולם" docs from "select all" — they're paid and shouldn't be in reminders
     setSelectedDocs(new Set(
-      customerRows
-        .filter((r) => statuses[docStatusKey(r)]?.status !== "שולם")
-        .map(docKey)
+      customerRows.filter((r) => statuses[docStatusKey(r)]?.status !== "שולם").map(docKey)
     ));
   }
 
-  function deselectAll() {
-    setSelectedDocs(new Set());
-  }
+  function deselectAll() { setSelectedDocs(new Set()); }
 
   // ── Derived values ────────────────────────────────────────────────────────
 
-  // Summary shows active (non-שולם) totals only
   const activeDocs = customerRows.filter((r) => statuses[docStatusKey(r)]?.status !== "שולם");
   const paidDocs   = customerRows.filter((r) => statuses[docStatusKey(r)]?.status === "שולם");
 
   const totalBalance  = activeDocs.reduce((s, r) => s + r.remainingBalance, 0);
   const docCount      = activeDocs.length;
   const maxAgeDays    = activeDocs.reduce((m, r) => Math.max(m, r.ageDays), 0);
-  const balance60plus = activeDocs
-    .filter((r) => r.band === "red")
-    .reduce((s, r) => s + r.remainingBalance, 0);
+  const balance60plus = activeDocs.filter((r) => r.band === "red").reduce((s, r) => s + r.remainingBalance, 0);
 
-  // Active docs first (sorted by age desc), then paid docs at the bottom
+  // Active docs first (by age desc), then paid docs at bottom
   const sortedDocs = useMemo(() => {
     const byAge = (a: EnrichedRow, b: EnrichedRow) => b.ageDays - a.ageDays;
-    return [
-      ...activeDocs.slice().sort(byAge),
-      ...paidDocs.slice().sort(byAge),
-    ];
+    return [...activeDocs.slice().sort(byAge), ...paidDocs.slice().sort(byAge)];
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerRows, statuses]);
 
@@ -384,55 +327,16 @@ export function CustomerPanel({
       {clickedRow !== null && (
         <div className="flex h-full flex-col overflow-hidden">
 
-          {/* ── Header ──────────────────────────────────────────────────── */}
-          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-200 px-5 py-4">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">לקוח</p>
-              <h2 className="mt-0.5 text-base font-bold leading-snug text-gray-900">
-                {customerName}
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="סגור פאנל"
-              className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* ── Contact section ──────────────────────────────────────────── */}
-          <ContactSection
+          {/* ── 1. Compact header: name + contact inline ─────────────────── */}
+          <CompactHeader
             customerName={customerName}
             contact={contact}
             onSaveContact={onSaveContact}
+            onClose={onClose}
           />
 
-          {/* ── Communication actions ─────────────────────────────────────── */}
-          <CommunicationSection
-            customerName={customerName}
-            selectedRows={selectedRows}
-            contact={contact}
-            onAddActivity={onAddActivity}
-          />
-
-          {/* ── Customer summary ─────────────────────────────────────────── */}
-          <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-4">
-            <div className="grid grid-cols-2 gap-3">
-              <SummaryItem label="יתרה פעילה"            value={fmtCurrency(totalBalance)} size="large" />
-              <SummaryItem label="מסמכים פעילים"          value={paidDocs.length > 0 ? `${docCount} (${paidDocs.length} שולם)` : String(docCount)} />
-              <SummaryItem label="זמן חריגה מקסימלי"      value={`${maxAgeDays} יום`} />
-              <SummaryItem
-                label="יתרה 60+ יום"
-                value={balance60plus > 0 ? fmtCurrency(balance60plus) : "—"}
-                variant={balance60plus > 0 ? "red" : "neutral"}
-              />
-            </div>
-          </div>
-
-          {/* ── Document list ────────────────────────────────────────────── */}
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* ── 2. Document list — primary visual section ─────────────────── */}
+          <div className="flex-1 overflow-y-auto border-b border-gray-100 px-5 py-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                 {customerRows.length === 1 ? "מסמך פתוח אחד" : `${customerRows.length} מסמכים`}
@@ -449,7 +353,10 @@ export function CustomerPanel({
                 <DocCard
                   key={docKey(doc)}
                   doc={doc}
-                  isClicked={doc.documentNumber === clickedRow.documentNumber && doc.documentType === clickedRow.documentType}
+                  isClicked={
+                    doc.documentNumber === clickedRow.documentNumber &&
+                    doc.documentType   === clickedRow.documentType
+                  }
                   isSelected={selectedDocs.has(docKey(doc))}
                   onToggle={() => toggleDoc(doc)}
                   docStatus={statuses[docStatusKey(doc)]}
@@ -460,7 +367,24 @@ export function CustomerPanel({
             </div>
           </div>
 
-          {/* ── Activity timeline ────────────────────────────────────────── */}
+          {/* ── 3. Actions: WhatsApp + email ──────────────────────────────── */}
+          <CommunicationSection
+            customerName={customerName}
+            selectedRows={selectedRows}
+            contact={contact}
+            onAddActivity={onAddActivity}
+          />
+
+          {/* ── 4. Summary strip — compact horizontal row ─────────────────── */}
+          <SummaryStrip
+            totalBalance={totalBalance}
+            docCount={docCount}
+            paidCount={paidDocs.length}
+            maxAgeDays={maxAgeDays}
+            balance60plus={balance60plus}
+          />
+
+          {/* ── 5. Activity log ───────────────────────────────────────────── */}
           <ActivitySection
             customerName={customerName}
             entries={activityEntries}
@@ -469,6 +393,181 @@ export function CustomerPanel({
 
         </div>
       )}
+    </div>
+  );
+}
+
+// ── CompactHeader ───────────────────────────────────────────────────────────
+// Combines the old separate Header and ContactSection into one compact block.
+// View mode: customer name + inline contact summary + edit link.
+// Edit mode: inline form replaces the header content.
+
+interface ContactDraft { contactPerson: string; phone: string; email: string; notes: string }
+
+interface CompactHeaderProps {
+  customerName:  string;
+  contact:       CustomerContact | undefined;
+  onSaveContact: (customerName: string, contact: CustomerContact) => void;
+  onClose:       () => void;
+}
+
+function CompactHeader({ customerName, contact, onSaveContact, onClose }: CompactHeaderProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<ContactDraft>({ contactPerson: "", phone: "", email: "", notes: "" });
+
+  const hasContact = !!(contact?.contactPerson || contact?.phone || contact?.email);
+
+  function startEdit() {
+    setDraft({
+      contactPerson: contact?.contactPerson ?? "",
+      phone:         contact?.phone ?? "",
+      email:         contact?.email ?? "",
+      notes:         contact?.notes ?? "",
+    });
+    setIsEditing(true);
+  }
+
+  function handleSave() {
+    const saved: CustomerContact = { updatedAt: Date.now() };
+    const cp = draft.contactPerson.trim();
+    const ph = draft.phone.trim();
+    const em = stripInvis(draft.email);
+    const no = draft.notes.trim();
+    if (cp.length > 0) saved.contactPerson = cp;
+    if (ph.length > 0) saved.phone = ph;
+    if (em.length > 0) saved.email = em;
+    if (no.length > 0) saved.notes = no;
+    onSaveContact(customerName, saved);
+    setIsEditing(false);
+  }
+
+  if (isEditing) {
+    return (
+      <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">עריכת פרטי קשר</p>
+          <button type="button" onClick={() => setIsEditing(false)} className="text-xs text-gray-500 hover:text-gray-700">ביטול</button>
+        </div>
+        <div className="space-y-2.5">
+          <EditField label="שם איש קשר" value={draft.contactPerson} onChange={(v) => setDraft((d) => ({ ...d, contactPerson: v }))} />
+          <EditField label="טלפון"       value={draft.phone}         onChange={(v) => setDraft((d) => ({ ...d, phone: v }))}         type="tel" />
+          <EditField label="אימייל"      value={draft.email}         onChange={(v) => setDraft((d) => ({ ...d, email: v }))}         type="email" />
+          <div>
+            <label className="mb-1 block text-xs text-gray-400">הערות</label>
+            <textarea
+              value={draft.notes}
+              onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+              rows={2}
+              className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setIsEditing(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100">
+              ביטול
+            </button>
+            <button type="button" onClick={handleSave} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+              שמור
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-3">
+      <div className="flex items-start gap-3">
+        {/* Left: name + contact details */}
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">לקוח</p>
+          <h2 className="mt-0.5 truncate text-base font-bold text-gray-900">{customerName}</h2>
+          {hasContact ? (
+            <div className="mt-1.5 space-y-0.5 text-xs text-gray-500">
+              {contact?.contactPerson && (
+                <p className="font-medium text-gray-700">{contact.contactPerson}</p>
+              )}
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                {contact?.phone && <p dir="ltr">{contact.phone}</p>}
+                {contact?.email && <p className="truncate">{contact.email}</p>}
+              </div>
+              {contact?.notes && (
+                <p className="line-clamp-1 text-gray-400">{contact.notes}</p>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={startEdit}
+              className="mt-1.5 text-xs text-blue-600 hover:text-blue-800"
+            >
+              + הוסף פרטי קשר
+            </button>
+          )}
+        </div>
+
+        {/* Right: edit + close */}
+        <div className="flex shrink-0 items-center gap-2 pt-0.5">
+          {hasContact && (
+            <button
+              type="button"
+              onClick={startEdit}
+              className="text-xs text-blue-600 hover:text-blue-800"
+            >
+              עריכה
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="סגור פאנל"
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── SummaryStrip ────────────────────────────────────────────────────────────
+// Compact single-row strip replacing the old 2×2 grid.
+
+interface SummaryStripProps {
+  totalBalance:  number;
+  docCount:      number;
+  paidCount:     number;
+  maxAgeDays:    number;
+  balance60plus: number;
+}
+
+function SummaryStrip({ totalBalance, docCount, paidCount, maxAgeDays, balance60plus }: SummaryStripProps) {
+  const docsValue = paidCount > 0 ? `${docCount} + ${paidCount}✓` : String(docCount);
+  return (
+    <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-2.5">
+      <div className="grid grid-cols-4 gap-1.5">
+        <StatChip label="יתרה פעילה"   value={fmtCurrency(totalBalance)} emphasis />
+        <StatChip label="מסמכים"        value={docsValue} />
+        <StatChip label="פיגור מרבי"   value={`${maxAgeDays} יום`} />
+        <StatChip label="60+ יום"       value={balance60plus > 0 ? fmtCurrency(balance60plus) : "—"} danger={balance60plus > 0} />
+      </div>
+    </div>
+  );
+}
+
+function StatChip({ label, value, emphasis = false, danger = false }: {
+  label: string; value: string; emphasis?: boolean; danger?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-center">
+      <p className="text-[9px] leading-tight text-gray-400">{label}</p>
+      <p className={[
+        "mt-0.5 truncate text-[11px] leading-tight tabular-nums",
+        emphasis ? "font-bold text-gray-900" : "font-semibold text-gray-700",
+        danger   ? "text-red-700" : "",
+      ].filter(Boolean).join(" ")}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -486,16 +585,11 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   const phone      = contact?.phone;
   const email      = contact?.email;
   const noSelected = selectedRows.length === 0;
-  const [busy, setBusy]   = useState(false);
+  const [busy,  setBusy]  = useState(false);
   const [steps, setSteps] = useState<string[] | null>(null);
 
-  function tick(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 0));
-  }
-
-  function addStep(line: string): void {
-    setSteps((prev) => [...(prev ?? []), line]);
-  }
+  function tick(): Promise<void> { return new Promise((r) => setTimeout(r, 0)); }
+  function addStep(line: string) { setSteps((prev) => [...(prev ?? []), line]); }
 
   const waDisabled = !phone || noSelected || busy;
   const emDisabled = !email || noSelected || busy;
@@ -510,12 +604,10 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     } else {
       try {
         const parsed = JSON.parse(rawStorage) as Record<string, unknown>;
-        const hasToken = "rivhitApiToken" in parsed;
-        const tokenVal = parsed["rivhitApiToken"];
+        const hasToken     = "rivhitApiToken" in parsed;
+        const tokenVal     = parsed["rivhitApiToken"];
         const tokenNonEmpty = typeof tokenVal === "string" && tokenVal.length > 0;
-        addStep(
-          `localStorage נמצא · rivhitApiToken: ${hasToken ? (tokenNonEmpty ? "✓ יש ערך" : "⚠️ ריק") : "⚠️ שדה חסר"}`
-        );
+        addStep(`localStorage נמצא · rivhitApiToken: ${hasToken ? (tokenNonEmpty ? "✓ יש ערך" : "⚠️ ריק") : "⚠️ שדה חסר"}`);
       } catch {
         addStep(`⚠️ localStorage קיים אבל לא JSON תקין: ${rawStorage.slice(0, 60)}`);
       }
@@ -534,23 +626,17 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     for (const row of selectedRows) {
       const typeKey = row.documentType.trim();
       const typeNum = DOC_TYPE_NUM[typeKey];
-      if (typeNum !== undefined) {
-        addStep(`3. קורא ל-/api/rivhit/document-list · סוג ${typeNum} · מסמך ${row.documentNumber}`);
-      } else {
-        addStep(`3. ⚠️ סוג "${typeKey}" לא ממופה — מדלג`);
-      }
+      if (typeNum !== undefined) addStep(`3. קורא ל-/api/rivhit/document-list · סוג ${typeNum} · מסמך ${row.documentNumber}`);
+      else                       addStep(`3. ⚠️ סוג "${typeKey}" לא ממופה — מדלג`);
     }
     await tick();
 
     const { map, debugLines } = await fetchDocumentLinks(selectedRows);
-
     addStep("4. התקבלה תשובה:");
     for (const line of debugLines) addStep(`   ${line}`);
     await tick();
-
     addStep(`5. נמצאו ${map.size}/${selectedRows.length} קישורים`);
     await tick();
-
     return map;
   }
 
@@ -582,161 +668,41 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   }
 
   return (
-    <div className="shrink-0 border-b border-gray-200 px-5 py-3">
+    <div className="shrink-0 border-t border-gray-200 px-5 py-3">
       <div className="flex gap-3">
-        <div className="flex-1">
-          <button
-            type="button"
-            onClick={() => { void handleWhatsApp(); }}
-            disabled={waDisabled}
-            className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy ? "מכין קישורים..." : "WhatsApp"}
-          </button>
-        </div>
-        <div className="flex-1">
-          <button
-            type="button"
-            onClick={() => { void handleEmail(); }}
-            disabled={emDisabled}
-            className="w-full rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy ? "מכין קישורים..." : "אימייל"}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => { void handleWhatsApp(); }}
+          disabled={waDisabled}
+          className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {busy ? "מכין קישורים..." : "WhatsApp"}
+        </button>
+        <button
+          type="button"
+          onClick={() => { void handleEmail(); }}
+          disabled={emDisabled}
+          className="flex-1 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {busy ? "מכין קישורים..." : "אימייל"}
+        </button>
       </div>
 
       {!busy && (waDisabled || emDisabled) && (
         <div className="mt-2 space-y-0.5 text-xs text-gray-500">
           {waDisabled && (
-            <p>
-              {noSelected
-                ? "לא ניתן לשלוח WhatsApp — יש לבחור לפחות מסמך אחד לשליחה."
-                : "לא ניתן לשלוח WhatsApp — לא קיים מספר טלפון ללקוח זה."}
-            </p>
+            <p>{noSelected ? "לא ניתן לשלוח WhatsApp — יש לבחור לפחות מסמך אחד לשליחה." : "לא ניתן לשלוח WhatsApp — לא קיים מספר טלפון ללקוח זה."}</p>
           )}
           {emDisabled && (
-            <p>
-              {noSelected
-                ? "לא ניתן לשלוח מייל — יש לבחור לפחות מסמך אחד לשליחה."
-                : "לא ניתן לשלוח מייל — לא קיימת כתובת מייל ללקוח זה."}
-            </p>
+            <p>{noSelected ? "לא ניתן לשלוח מייל — יש לבחור לפחות מסמך אחד לשליחה." : "לא ניתן לשלוח מייל — לא קיימת כתובת מייל ללקוח זה."}</p>
           )}
         </div>
       )}
 
       {steps !== null && (
-        <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-mono text-xs text-blue-900">
-          {steps.map((s, i) => (
-            <p key={i} className="leading-snug">{s}</p>
-          ))}
+        <div className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-mono text-xs text-blue-900">
+          {steps.map((s, i) => <p key={i} className="leading-snug">{s}</p>)}
         </div>
-      )}
-    </div>
-  );
-}
-
-// ── ContactSection ──────────────────────────────────────────────────────────
-
-interface ContactDraft {
-  contactPerson: string;
-  phone:         string;
-  email:         string;
-  notes:         string;
-}
-
-interface ContactSectionProps {
-  customerName:  string;
-  contact:       CustomerContact | undefined;
-  onSaveContact: (customerName: string, contact: CustomerContact) => void;
-}
-
-function ContactSection({ customerName, contact, onSaveContact }: ContactSectionProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState<ContactDraft>({
-    contactPerson: "",
-    phone:         "",
-    email:         "",
-    notes:         "",
-  });
-
-  const hasAnyData =
-    !!contact?.contactPerson ||
-    !!contact?.phone ||
-    !!contact?.email ||
-    !!contact?.notes;
-
-  function startEdit() {
-    setDraft({
-      contactPerson: contact?.contactPerson ?? "",
-      phone:         contact?.phone ?? "",
-      email:         contact?.email ?? "",
-      notes:         contact?.notes ?? "",
-    });
-    setIsEditing(true);
-  }
-
-  function handleSave() {
-    const saved: CustomerContact = { updatedAt: Date.now() };
-    const cp = draft.contactPerson.trim();
-    const ph = draft.phone.trim();
-    const em = stripInvis(draft.email);
-    const no = draft.notes.trim();
-    if (cp.length > 0) saved.contactPerson = cp;
-    if (ph.length > 0) saved.phone = ph;
-    if (em.length > 0) saved.email = em;
-    if (no.length > 0) saved.notes = no;
-    onSaveContact(customerName, saved);
-    setIsEditing(false);
-  }
-
-  if (isEditing) {
-    return (
-      <div className="shrink-0 border-b border-gray-200 px-5 py-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">פרטי קשר</p>
-        <div className="space-y-3">
-          <EditField label="שם איש קשר" value={draft.contactPerson} onChange={(v) => setDraft((d) => ({ ...d, contactPerson: v }))} />
-          <EditField label="טלפון"       value={draft.phone}         onChange={(v) => setDraft((d) => ({ ...d, phone: v }))}         type="tel" />
-          <EditField label="אימייל"      value={draft.email}         onChange={(v) => setDraft((d) => ({ ...d, email: v }))}         type="email" />
-          <div>
-            <label className="mb-1 block text-xs text-gray-400">הערות</label>
-            <textarea
-              value={draft.notes}
-              onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-              rows={3}
-              className="w-full resize-none rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setIsEditing(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
-              ביטול
-            </button>
-            <button type="button" onClick={handleSave} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
-              שמור
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="shrink-0 border-b border-gray-200 px-5 py-4">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">פרטי קשר</p>
-        <button type="button" onClick={startEdit} className="rounded text-xs text-blue-600 hover:text-blue-800">
-          {hasAnyData ? "עריכה" : "+ הוסף"}
-        </button>
-      </div>
-      {hasAnyData ? (
-        <dl className="space-y-2">
-          {contact?.contactPerson && <ViewRow label="שם איש קשר" value={contact.contactPerson} />}
-          {contact?.phone         && <ViewRow label="טלפון"       value={contact.phone} />}
-          {contact?.email         && <ViewRow label="אימייל"      value={contact.email} />}
-          {contact?.notes         && <ViewRow label="הערות"       value={contact.notes} multiline />}
-        </dl>
-      ) : (
-        <p className="text-sm italic text-gray-400">אין פרטי קשר שמורים</p>
       )}
     </div>
   );
@@ -763,12 +729,9 @@ function ActivitySection({ customerName, entries, onAddActivity }: ActivitySecti
   const displayed = [...entries].reverse();
 
   return (
-    <div className="shrink-0 border-t border-gray-200 px-5 py-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-        יומן פעילות
-      </p>
-
-      <div className="mb-3 flex gap-2">
+    <div className="shrink-0 border-t border-gray-200 px-5 py-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">יומן פעילות</p>
+      <div className="flex gap-2">
         <input
           type="text"
           value={note}
@@ -788,9 +751,9 @@ function ActivitySection({ customerName, entries, onAddActivity }: ActivitySecti
       </div>
 
       {displayed.length === 0 ? (
-        <p className="text-xs italic text-gray-400">אין פעילות מתועדת עדיין</p>
+        <p className="mt-2 text-xs italic text-gray-400">אין פעילות מתועדת עדיין</p>
       ) : (
-        <div className="max-h-40 space-y-2.5 overflow-y-auto">
+        <div className="mt-2 max-h-32 space-y-2 overflow-y-auto">
           {displayed.map((entry) => (
             <div key={entry.id} className="flex items-start justify-between gap-2">
               <div className="flex min-w-0 items-start gap-2">
@@ -826,24 +789,19 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
   const [statusOpen, setStatusOpen] = useState(false);
 
   const effectiveStatus: CollectionStatus = docStatus?.status ?? "לא טופל";
-  const isPaid = effectiveStatus === "שולם";
+  const isPaid    = effectiveStatus === "שולם";
   const statusKey = docStatusKey(doc);
 
   const cardBg =
-    isClicked
-      ? "border-blue-300 bg-blue-50"
-      : isPaid
-      ? "bg-green-50 border-green-200"
-      : CARD_BG[doc.band];
+    isClicked ? "border-blue-300 bg-blue-50" :
+    isPaid    ? "bg-green-50 border-green-200" :
+    CARD_BG[doc.band];
 
   const balanceColor =
-    doc.remainingBalance < 0
-      ? "text-green-700"
-      : isPaid
-      ? "text-green-700"
-      : doc.band === "red"
-      ? "text-red-700"
-      : "text-gray-900";
+    doc.remainingBalance < 0 ? "text-green-700" :
+    isPaid               ? "text-green-700" :
+    doc.band === "red"   ? "text-red-700"   :
+    "text-gray-900";
 
   return (
     <div className="flex items-start gap-2">
@@ -881,11 +839,8 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
           </span>
         </div>
 
-        {/* Row 3: per-document status picker — click stops card-toggle propagation */}
-        <div
-          className="mt-2.5"
-          onClick={(e) => e.stopPropagation()}
-        >
+        {/* Row 3: per-document status picker */}
+        <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
           {statusOpen ? (
             <div className="flex flex-wrap items-center gap-1">
               {ALL_STATUSES.map((s) => (
@@ -918,7 +873,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
             </button>
           )}
 
-          {/* Expected payment date — visible only when status is "מועמד לתשלום" */}
+          {/* Expected payment date — only when "מועמד לתשלום" and picker closed */}
           {effectiveStatus === "מועמד לתשלום" && !statusOpen && (
             <div className="mt-2 flex items-center gap-2">
               <label className="shrink-0 text-xs text-gray-400">תאריך תשלום צפוי</label>
@@ -948,37 +903,8 @@ function EditField({ label, value, onChange, type = "text" }: {
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
       />
-    </div>
-  );
-}
-
-function ViewRow({ label, value, multiline = false }: {
-  label: string; value: string; multiline?: boolean;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 text-sm">
-      <dt className="shrink-0 text-gray-400">{label}</dt>
-      <dd className={`text-right font-medium text-gray-900 ${multiline ? "whitespace-pre-wrap" : ""}`}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-interface SummaryItemProps {
-  label: string; value: string; size?: "large"; variant?: "red" | "neutral";
-}
-
-function SummaryItem({ label, value, size, variant }: SummaryItemProps) {
-  const valueColor = variant === "red" ? "text-red-700" : "text-gray-900";
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
-      <p className="text-xs text-gray-400">{label}</p>
-      <p className={`mt-0.5 font-bold tabular-nums ${size === "large" ? "text-base" : "text-sm"} ${valueColor}`}>
-        {value}
-      </p>
     </div>
   );
 }
