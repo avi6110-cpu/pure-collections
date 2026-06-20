@@ -2,7 +2,7 @@ import type { RivhitRow } from "@/lib/parseRivhit";
 
 // ── Document type mapping ─────────────────────────────────────────────────────
 
-const DOC_TYPE_NUM: Readonly<Record<string, number>> = {
+export const DOC_TYPE_NUM: Readonly<Record<string, number>> = {
   "חשבונית מס":       1,
   "חשבונית מס קבלה": 2,
   "חשבונית מס זיכוי": 3,

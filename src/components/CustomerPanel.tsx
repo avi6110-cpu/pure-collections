@@ -7,6 +7,7 @@ import type { CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityEntry, ActivityType } from "@/types/activity";
+import { EyeIcon } from "@/components/DocumentPreviewModal";
 
 // ── Invisible-character sanitizer ────────────────────────────────────────────
 // Rivhit embeds RTL marks and zero-width chars in strings. trim() misses them
@@ -237,6 +238,7 @@ interface CustomerPanelProps {
   onSaveExpectedDate: (docKey: string, date: string | undefined) => void;
   activityEntries:    ActivityEntry[];
   onAddActivity:      (customerName: string, type: ActivityType, text: string) => void;
+  onPreview:          (documentType: string, documentNumber: number) => void;
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -252,6 +254,7 @@ export function CustomerPanel({
   onSaveExpectedDate,
   activityEntries,
   onAddActivity,
+  onPreview,
 }: CustomerPanelProps) {
   // Close on Escape
   useEffect(() => {
@@ -362,6 +365,7 @@ export function CustomerPanel({
                   docStatus={statuses[docStatusKey(doc)]}
                   onSaveStatus={onSaveStatus}
                   onSaveExpectedDate={onSaveExpectedDate}
+                  onPreview={onPreview}
                 />
               ))}
             </div>
@@ -783,9 +787,10 @@ interface DocCardProps {
   docStatus:          DocumentStatus | undefined;
   onSaveStatus:       (docKey: string, status: CollectionStatus) => void;
   onSaveExpectedDate: (docKey: string, date: string | undefined) => void;
+  onPreview:          (documentType: string, documentNumber: number) => void;
 }
 
-function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate }: DocCardProps) {
+function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate, onPreview }: DocCardProps) {
   const [statusOpen, setStatusOpen] = useState(false);
 
   const effectiveStatus: CollectionStatus = docStatus?.status ?? "לא טופל";
@@ -816,13 +821,23 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
         className={`flex-1 cursor-pointer rounded-lg border px-4 py-3 transition-opacity ${cardBg} ${!isSelected && !isPaid ? "opacity-40" : ""}`}
         onClick={onToggle}
       >
-        {/* Row 1: document type + number | balance */}
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-right text-sm font-semibold text-gray-900">
-            {doc.documentType}
-            <span className="mx-1 text-gray-300">·</span>
-            <span className="font-normal tabular-nums text-gray-600">{doc.documentNumber}</span>
-          </p>
+        {/* Row 1: document type + number + eye button | balance */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <p className="text-right text-sm font-semibold text-gray-900">
+              {doc.documentType}
+              <span className="mx-1 text-gray-300">·</span>
+              <span className="font-normal tabular-nums text-gray-600">{doc.documentNumber}</span>
+            </p>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onPreview(doc.documentType, doc.documentNumber); }}
+              aria-label={`צפה במסמך ${doc.documentNumber}`}
+              className="shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-white/70 hover:text-indigo-600"
+            >
+              <EyeIcon size={13} />
+            </button>
+          </div>
           <p className={`shrink-0 text-left text-sm font-bold tabular-nums ${balanceColor}`}>
             {fmtCurrency(doc.remainingBalance)}
           </p>

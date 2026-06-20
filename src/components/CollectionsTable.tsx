@@ -10,6 +10,7 @@ import type { CollectionStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { CustomerPanel } from "@/components/CustomerPanel";
+import { DocumentPreviewModal, EyeIcon } from "@/components/DocumentPreviewModal";
 import type { ImportSource, SyncStats } from "@/components/AppShell";
 
 // ── Formatting ──────────────────────────────────────────────────────────────
@@ -216,8 +217,10 @@ export function CollectionsTable({
   const [selectedRow,        setSelectedRow]        = useState<EnrichedRow | null>(null);
   const [activeFilter,       setActiveFilter]       = useState<ActiveFilter>("all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<StatusFilter>("all");
+  const [previewDoc, setPreviewDoc] = useState<{ documentType: string; documentNumber: number } | null>(null);
 
-  const closePanel = useCallback(() => setSelectedRow(null), []);
+  const closePanel   = useCallback(() => setSelectedRow(null), []);
+  const closePreview = useCallback(() => setPreviewDoc(null),  []);
 
   function handleSort(col: SortColumn) {
     if (col === sortCol) {
@@ -536,6 +539,8 @@ export function CollectionsTable({
               <Th col="documentType"     label="מסמך"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <Th col="documentNumber"   label="מס׳ מסמך"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} numeric />
               <Th col="documentDate"     label="תאריך מסמך"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              {/* Blank header for eye-button column */}
+              <th className="w-8 border-b border-gray-200 bg-gray-50 px-2 py-3" />
             </tr>
           </thead>
           <tbody className="bg-white">
@@ -603,13 +608,28 @@ export function CollectionsTable({
 
                   {/* תאריך מסמך */}
                   <Td>{row.documentDate}</Td>
+
+                  {/* צפה — eye button, always visible */}
+                  <td className="w-8 whitespace-nowrap px-2 py-2.5 text-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewDoc({ documentType: row.documentType, documentNumber: row.documentNumber });
+                      }}
+                      aria-label={`צפה במסמך ${row.documentNumber}`}
+                      className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-indigo-600"
+                    >
+                      <EyeIcon size={14} />
+                    </button>
+                  </td>
                 </tr>
               );
             })}
 
             {displayed.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-16 text-center text-gray-400">
+                <td colSpan={7} className="py-16 text-center text-gray-400">
                   לא נמצאו תוצאות
                 </td>
               </tr>
@@ -635,7 +655,16 @@ export function CollectionsTable({
         onSaveExpectedDate={onSaveExpectedDate}
         activityEntries={customerActivity}
         onAddActivity={onAddActivity}
+        onPreview={(documentType, documentNumber) => setPreviewDoc({ documentType, documentNumber })}
       />
+
+      {previewDoc !== null && (
+        <DocumentPreviewModal
+          documentType={previewDoc.documentType}
+          documentNumber={previewDoc.documentNumber}
+          onClose={closePreview}
+        />
+      )}
 
     </div>
   );
