@@ -8,6 +8,7 @@ import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityEntry, ActivityType } from "@/types/activity";
 import { EyeIcon } from "@/components/DocumentPreviewModal";
+import { DOC_TYPE_NUM } from "@/lib/parseRivhitApi";
 
 // ── Invisible-character sanitizer ────────────────────────────────────────────
 // Rivhit embeds RTL marks and zero-width chars in strings. trim() misses them
@@ -52,13 +53,6 @@ function normalizePhone(raw: string): string {
 
 // ── Rivhit document link fetching ───────────────────────────────────────────
 
-const DOC_TYPE_NUM: Readonly<Record<string, number>> = {
-  "חשבונית מס":        1,
-  "חשבונית מס קבלה":  2,
-  "חשבונית מס זיכוי": 3,
-  "חשבון חיוב":        8,
-};
-
 function readToken(): string {
   try {
     const raw = localStorage.getItem("pure-collections:settings");
@@ -99,14 +93,12 @@ async function fetchDocumentLink(
   const typeNum = DOC_TYPE_NUM[typeKey];
   if (typeNum === undefined) return { link: null, debug: `סוג "${typeKey}" לא ממופה` };
   try {
-    const res = await fetch("/api/rivhit/document-list", {
+    const res = await fetch("/api/rivhit/document-copy", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
       body: JSON.stringify({
-        from_document_type:   typeNum,
-        to_document_type:     typeNum,
-        from_document_number: documentNumber,
-        to_document_number:   documentNumber,
+        document_type:   typeNum,
+        document_number: documentNumber,
       }),
     });
     if (!res.ok) return { link: null, debug: `HTTP ${res.status}` };
@@ -284,6 +276,7 @@ export function CustomerPanel({
   );
 
   function toggleDoc(doc: EnrichedRow) {
+    if (statuses[docStatusKey(doc)]?.status === "שולם") return;
     const key = docKey(doc);
     setSelectedDocs((prev) => {
       const next = new Set(prev);
@@ -299,6 +292,19 @@ export function CustomerPanel({
   }
 
   function deselectAll() { setSelectedDocs(new Set()); }
+
+  // When a doc's status becomes "שולם", drop it from the selection immediately
+  useEffect(() => {
+    setSelectedDocs((prev) => {
+      const paidKeys = customerRows
+        .filter((r) => prev.has(docKey(r)) && statuses[docStatusKey(r)]?.status === "שולם")
+        .map(docKey);
+      if (paidKeys.length === 0) return prev;
+      const next = new Set(prev);
+      paidKeys.forEach((k) => next.delete(k));
+      return next;
+    });
+  }, [statuses, customerRows]);
 
   // ── Derived values ────────────────────────────────────────────────────────
 
@@ -589,72 +595,28 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   const phone      = contact?.phone;
   const email      = contact?.email;
   const noSelected = selectedRows.length === 0;
-  const [busy,  setBusy]  = useState(false);
-  const [steps, setSteps] = useState<string[] | null>(null);
-
-  function tick(): Promise<void> { return new Promise((r) => setTimeout(r, 0)); }
-  function addStep(line: string) { setSteps((prev) => [...(prev ?? []), line]); }
+  const [busy,       setBusy]       = useState(false);
+  const [linksError, setLinksError] = useState<string | null>(null);
 
   const waDisabled = !phone || noSelected || busy;
   const emDisabled = !email || noSelected || busy;
 
-  async function fetchLinksWithSteps(): Promise<Map<string, string>> {
-    setSteps(["1. מתחיל להביא קישורים..."]);
-    await tick();
-
-    const rawStorage = localStorage.getItem("pure-collections:settings");
-    if (rawStorage === null) {
-      addStep("⚠️ localStorage key 'pure-collections:settings' לא קיים");
-    } else {
-      try {
-        const parsed = JSON.parse(rawStorage) as Record<string, unknown>;
-        const hasToken     = "rivhitApiToken" in parsed;
-        const tokenVal     = parsed["rivhitApiToken"];
-        const tokenNonEmpty = typeof tokenVal === "string" && tokenVal.length > 0;
-        addStep(`localStorage נמצא · rivhitApiToken: ${hasToken ? (tokenNonEmpty ? "✓ יש ערך" : "⚠️ ריק") : "⚠️ שדה חסר"}`);
-      } catch {
-        addStep(`⚠️ localStorage קיים אבל לא JSON תקין: ${rawStorage.slice(0, 60)}`);
-      }
-    }
-    await tick();
-
+  async function fetchLinks(): Promise<Map<string, string>> {
     const token = readToken();
     if (!token) {
-      addStep("⚠️ טוקן לא נמצא — פתח הגדרות, הכנס את הטוקן, לחץ שמור, ונסה שוב");
-      await tick();
+      setLinksError("טוקן API לא מוגדר — בדוק הגדרות");
       return new Map();
     }
-    addStep(`2. טוקן נמצא ✓`);
-    await tick();
-
-    for (const row of selectedRows) {
-      const typeKey = row.documentType.trim();
-      const typeNum = DOC_TYPE_NUM[typeKey];
-      if (typeNum !== undefined) addStep(`3. קורא ל-/api/rivhit/document-list · סוג ${typeNum} · מסמך ${row.documentNumber}`);
-      else                       addStep(`3. ⚠️ סוג "${typeKey}" לא ממופה — מדלג`);
-    }
-    await tick();
-
-    const { map, debugLines } = await fetchDocumentLinks(selectedRows);
-    addStep("4. התקבלה תשובה:");
-    for (const line of debugLines) addStep(`   ${line}`);
-    await tick();
-    addStep(`5. נמצאו ${map.size}/${selectedRows.length} קישורים`);
-    await tick();
+    setLinksError(null);
+    const { map } = await fetchDocumentLinks(selectedRows);
     return map;
   }
 
   async function handleWhatsApp() {
     if (!phone || noSelected) return;
     setBusy(true);
-    const links = await fetchLinksWithSteps();
+    const links = await fetchLinks();
     const msg = buildWhatsAppMessage(customerName, selectedRows, links);
-    addStep(`6. הודעה: ${msg.length} תווים · ${msg.split("\n").length} שורות`);
-    addStep(`   תחילת הודעה: ${msg.slice(0, 60).replace(/\n/g, "↵")}`);
-    addStep(`   סוף הודעה:   ${msg.slice(-60).replace(/\n/g, "↵")}`);
-    await tick();
-    addStep("7. פותח WhatsApp...");
-    await tick();
     window.open(`https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
     onAddActivity(customerName, "whatsapp_opened", "טיוטת WhatsApp נפתחה");
     setBusy(false);
@@ -663,9 +625,7 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   async function handleEmail() {
     if (!email || noSelected) return;
     setBusy(true);
-    const links = await fetchLinksWithSteps();
-    addStep("6. פותח אימייל...");
-    await tick();
+    const links = await fetchLinks();
     window.location.href = buildEmailUrl(email, customerName, selectedRows, links);
     onAddActivity(customerName, "email_opened", "טיוטת אימייל נפתחה");
     setBusy(false);
@@ -703,10 +663,8 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
         </div>
       )}
 
-      {steps !== null && (
-        <div className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-mono text-xs text-blue-900">
-          {steps.map((s, i) => <p key={i} className="leading-snug">{s}</p>)}
-        </div>
+      {linksError !== null && (
+        <p className="mt-2 text-xs text-red-600">{linksError}</p>
       )}
     </div>
   );
@@ -814,12 +772,13 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
         type="checkbox"
         checked={isSelected}
         onChange={onToggle}
-        className="mt-[14px] h-4 w-4 shrink-0 cursor-pointer accent-indigo-600"
+        disabled={isPaid}
+        className="mt-[14px] h-4 w-4 shrink-0 accent-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
       />
-      {/* Clicking the card body toggles selection; status area stops propagation */}
+      {/* Clicking the card body toggles selection; paid docs are non-interactive */}
       <div
-        className={`flex-1 cursor-pointer rounded-lg border px-4 py-3 transition-opacity ${cardBg} ${!isSelected && !isPaid ? "opacity-40" : ""}`}
-        onClick={onToggle}
+        className={`flex-1 rounded-lg border px-4 py-3 transition-opacity ${cardBg} ${!isPaid ? "cursor-pointer" : ""} ${!isSelected && !isPaid ? "opacity-40" : ""}`}
+        onClick={isPaid ? undefined : onToggle}
       >
         {/* Row 1: document type + number + eye button | balance */}
         <div className="flex items-center justify-between gap-2">

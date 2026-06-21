@@ -76,13 +76,13 @@ export function DocumentPreviewModal({
 }: DocumentPreviewModalProps) {
   const [state, setState] = useState<PreviewState>({ kind: "loading" });
 
-  // Escape key closes modal
+  // Escape key closes modal — capture phase so it fires before CustomerPanel's handler
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { e.stopImmediatePropagation(); onClose(); }
     }
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
+    document.addEventListener("keydown", handleKey, { capture: true });
+    return () => document.removeEventListener("keydown", handleKey, { capture: true });
   }, [onClose]);
 
   // Fetch document link from Document.Copy on mount
