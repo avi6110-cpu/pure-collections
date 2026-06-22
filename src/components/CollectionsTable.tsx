@@ -119,13 +119,21 @@ const INITIAL_DIR: Record<SortColumn, SortDir> = {
   documentDate:     "asc",
 };
 
+// Band urgency rank: higher = more urgent. Used as primary key when sorting by ageDays
+// so all red rows group before yellow before fresh, each sub-sorted by balance.
+const BAND_RANK: Record<AgingBand, number> = { fresh: 0, yellow: 1, red: 2 };
+
 function sortRows(rows: EnrichedRow[], col: SortColumn, dir: SortDir): EnrichedRow[] {
   return [...rows].sort((a, b) => {
     let cmp = 0;
     switch (col) {
       case "customerName":     cmp = a.customerName.localeCompare(b.customerName, "he"); break;
       case "remainingBalance": cmp = a.remainingBalance - b.remainingBalance;             break;
-      case "ageDays":          cmp = a.ageDays          - b.ageDays;                      break;
+      case "ageDays":
+        // Primary: band group (red > yellow > fresh). Secondary: balance within band.
+        cmp = BAND_RANK[a.band] - BAND_RANK[b.band];
+        if (cmp === 0) cmp = a.remainingBalance - b.remainingBalance;
+        break;
       case "documentType":     cmp = a.documentType.localeCompare(b.documentType, "he"); break;
       case "documentNumber":   cmp = a.documentNumber   - b.documentNumber;               break;
       case "documentDate":     cmp = a.documentDateMs   - b.documentDateMs;               break;
@@ -220,7 +228,7 @@ export function CollectionsTable({
   onAddActivity,
 }: CollectionsTableProps) {
   const [query,                setQuery]                = useState("");
-  const [sortCol,              setSortCol]              = useState<SortColumn>("remainingBalance");
+  const [sortCol,              setSortCol]              = useState<SortColumn>("ageDays");
   const [sortDir,              setSortDir]              = useState<SortDir>("desc");
   const [selectedRow,          setSelectedRow]          = useState<EnrichedRow | null>(null);
   const [activeFilter,         setActiveFilter]         = useState<ActiveFilter>("all");
