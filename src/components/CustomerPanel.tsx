@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { EnrichedRow } from "@/types/collections";
-import { docStatusKey, CREDIT_INVOICE_TYPE } from "@/lib/parseRivhit";
+import { docStatusKey, CREDIT_INVOICE_TYPE, computeDueDate } from "@/lib/parseRivhit";
 import type { CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
@@ -815,7 +815,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
           <div className="mt-1.5 flex items-center justify-between gap-2">
             <p className="text-right text-xs text-gray-400">
               {doc.documentDate}
-              {doc.dueDate !== "" && <span> · פרעון: {doc.dueDate}</span>}
+              {doc.documentDateMs > 0 && <span> · פרעון: {new Date(computeDueDate(doc.documentDateMs)).toLocaleDateString("he-IL")}</span>}
             </p>
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
               זיכוי
@@ -866,7 +866,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
         <div className="mt-1.5 flex items-center justify-between gap-2">
           <p className="text-right text-xs text-gray-500">
             {doc.documentDate}
-            {doc.dueDate !== "" && <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>}
+            {doc.documentDateMs > 0 && <span className="text-gray-400"> · פרעון: {new Date(computeDueDate(doc.documentDateMs)).toLocaleDateString("he-IL")}</span>}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
             {isFollowUp && (

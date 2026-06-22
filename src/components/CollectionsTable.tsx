@@ -3,14 +3,13 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { RivhitRow } from "@/lib/parseRivhit";
-import { docStatusKey } from "@/lib/parseRivhit";
+import { docStatusKey, computeDueDate, CREDIT_INVOICE_TYPE } from "@/lib/parseRivhit";
 import type { AgingBand, EnrichedRow } from "@/types/collections";
 import type { ContactMap, CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { isTodayFollowUp, todayDateStr } from "@/lib/followUp";
-import { CREDIT_INVOICE_TYPE } from "@/lib/parseRivhit";
 import { CustomerPanel } from "@/components/CustomerPanel";
 import { DocumentPreviewModal, EyeIcon } from "@/components/DocumentPreviewModal";
 import type { ImportSource, SyncStats } from "@/components/AppShell";
@@ -39,13 +38,6 @@ function fmtImportDate(ms: number): string {
 // ── Aging ───────────────────────────────────────────────────────────────────
 
 // שוטף + 30: פירעון = סוף חודש המסמך + 30 ימים
-function computeDueDate(documentDateMs: number): number {
-  const d = new Date(documentDateMs);
-  const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  endOfMonth.setDate(endOfMonth.getDate() + 30);
-  return endOfMonth.getTime();
-}
-
 function computeAgeDays(documentDateMs: number): number {
   if (!documentDateMs) return 0;
   return Math.max(0, Math.floor((Date.now() - computeDueDate(documentDateMs)) / 86_400_000));

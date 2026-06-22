@@ -2,6 +2,21 @@
 
 export const CREDIT_INVOICE_TYPE = "חשבונית מס זיכוי" as const;
 
+// ── Net+30 due date ───────────────────────────────────────────────────────────
+
+/**
+ * PURE's payment terms: end of the invoice month + 30 days (שוטף+30).
+ * Returns the due date as Unix milliseconds.
+ * Rivhit's raw dueDate field is unreliable (always equals documentDate),
+ * so this computed value is used for all display and aging calculations.
+ */
+export function computeDueDate(documentDateMs: number): number {
+  const d = new Date(documentDateMs);
+  const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  endOfMonth.setDate(endOfMonth.getDate() + 30);
+  return endOfMonth.getTime();
+}
+
 // ── Public row type ───────────────────────────────────────────────────────────
 
 export interface RivhitRow {
