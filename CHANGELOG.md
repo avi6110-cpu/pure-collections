@@ -11,6 +11,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.20.0] — 2026-06-22 — KPI Band Alignment Fix
+
+### Fixed
+- Aging-band KPI cards (60+, 30–60, <30) now source balances and record counts from `tableRows` (256 actionable invoices) instead of `enriched` (481 rows). Previously, credit invoices in the red band produced a negative 60+ balance (−₪42,523) and a KPI/table mismatch (250 records shown, 51 in table).
+- Main KPI net balance (₪637,624) remains sourced from `enriched` — Rivhit source of truth preserved.
+- `tableRows` declaration moved before `summary` useMemo to resolve dependency order.
+
+### Before / After
+| KPI | Before | After |
+|---|---|---|
+| 60+ יום | −₪42,523 · 250 records | ₪98,981 · 51 records |
+| 30–60 יום | ₪26,327 · 19 records | ₪29,804 · 9 records |
+| <30 יום | ₪653,820 · 212 records | ₪659,076 · 196 records |
+| Main net | ₪637,624 · 481 count | ₪637,624 · 256 count |
+
+---
+
+## [0.19.0] — 2026-06-22 — Credit Invoice Exclusion from Work Queue
+
+### Changed
+- Main collections table now shows only actionable documents; credit invoices (חשבונית מס זיכוי) are filtered out via a new `tableRows` useMemo that sits between `enriched` and `bandFiltered`
+- `enriched` (KPI source) and `customerRows` (CustomerPanel source) are unchanged — net balance math and customer panel totals continue to include credit invoice negative values exactly as Rivhit provides them
+- "מתוך N" denominator in table footer uses `tableRows.length` (non-credit count) rather than `summary.totalRows`
+- `selectAll` in CustomerPanel now excludes credit invoices from checkbox selection
+- Credit invoice DocCards in CustomerPanel render as read-only context: neutral gray background, alignment placeholder instead of checkbox, no status picker, no "לטיפול היום" badge, no opacity-40 effect, "זיכוי" label badge; eye/preview button retained
+
+### Added
+- `CREDIT_INVOICE_TYPE = "חשבונית מס זיכוי"` constant exported from `src/lib/parseRivhit.ts` (single source of truth used by both components)
+
+---
+
 ## [0.13.0] — 2026-06-17 — Document Selection for Communication Drafts
 
 ### Added

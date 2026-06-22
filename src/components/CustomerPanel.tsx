@@ -261,14 +261,14 @@ export function CustomerPanel({
     return () => document.removeEventListener("keydown", handleKey);
   }, [clickedRow, onClose]);
 
-  // ── Document selection — unchanged business logic ──────────────────────────
-  // "שולם" docs excluded from initial selection; CustomerPanel remounts on
-  // customer switch (key={customerName} in CollectionsTable), so this initializer
-  // always runs fresh.
+  // ── Document selection ────────────────────────────────────────────────────
+  // Default: all open non-paid non-credit docs. Matches "בחר הכל" button exactly.
+  // CustomerPanel remounts on customer switch (key={customerName} in CollectionsTable)
+  // so this initializer always runs fresh.
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(
     () => new Set(
       customerRows
-        .filter((r) => r.ageDays >= 30 && statuses[docStatusKey(r)]?.status !== "שולם")
+        .filter((r) => statuses[docStatusKey(r)]?.status !== "שולם" && r.documentType !== CREDIT_INVOICE_TYPE)
         .map(docKey)
     )
   );
