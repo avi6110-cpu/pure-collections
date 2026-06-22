@@ -3,6 +3,7 @@ export type CollectionStatus =
   | "בטיפול"
   | "ממתין לתשלום"
   | "מועמד לתשלום"
+  | "במחלוקת"
   | "שולם";
 
 export const ALL_STATUSES: CollectionStatus[] = [
@@ -10,6 +11,7 @@ export const ALL_STATUSES: CollectionStatus[] = [
   "בטיפול",
   "ממתין לתשלום",
   "מועמד לתשלום",
+  "במחלוקת",
   "שולם",
 ];
 

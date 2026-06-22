@@ -72,6 +72,11 @@
 - [x] Customer activity timeline — per-customer log (status changes, WhatsApp/email opens, manual notes); `pure-collections:activity` key; newest-first display; icon + timestamp per entry; survives imports
 - [x] Refined statuses — "הבטיח לשלם" replaced by "ממתין לתשלום"; migrate-on-read for existing data; `expectedPaymentDate?: string` per customer; date picker in Customer Panel when status = "מועמד לתשלום"; date survives status changes and imports
 - [x] Document selection for communication drafts — per-document checkboxes in Customer Panel; default selected = 30+ day docs; fresh docs unselected; WhatsApp/Email disabled when no selection; composite docKey prevents type/number collisions
+- [x] Document-level collection status — status keyed by `customerName|documentType|documentNumber`; "שולם" docs stay visible (green, bottom of list) but excluded from active totals; migration from old customer-level format on read
+- [x] Customer Panel workflow-first layout — CompactHeader (name + contact inline), document list as primary section (flex-1), CommunicationSection below docs, SummaryStrip (4-stat horizontal row), ActivitySection at bottom
+- [x] In-app document preview — eye button on each table row and each CustomerPanel document card; calls Document.Copy API; full-screen iframe modal with loading/error/fallback states; Escape and backdrop close
+- [x] Robust Excel import — header-name detection replaces fixed column indexes; scans preamble for header row; fails loudly with Hebrew error if required columns missing; confirmed alias "יתרה לתשלום" for balance column
+- [x] "במחלוקת" dispute status — per-document workflow flag; mandatory note required; activity log entry on confirm; orange row/card styling; filter chip in status row; disputed docs remain in totals and aging; no dedicated KPI card
 
 ---
 

@@ -58,8 +58,9 @@ const ROW_BG: Record<AgingBand, string> = {
   red:    "bg-red-50 hover:bg-red-100",
 };
 
-const ROW_BG_SELECTED = "bg-blue-50 hover:bg-blue-100";
-const ROW_BG_PAID     = "bg-green-50 hover:bg-green-100";
+const ROW_BG_SELECTED  = "bg-blue-50 hover:bg-blue-100";
+const ROW_BG_PAID      = "bg-green-50 hover:bg-green-100";
+const ROW_BG_DISPUTED  = "bg-orange-50 hover:bg-orange-100";
 
 const AGE_BADGE: Record<AgingBand, string> = {
   fresh:  "bg-gray-100 text-gray-600",
@@ -75,6 +76,7 @@ const STATUS_ROW_BORDER: Record<CollectionStatus, string> = {
   "בטיפול":       "border-r-4 border-blue-400",
   "ממתין לתשלום": "border-r-4 border-amber-400",
   "מועמד לתשלום": "border-r-4 border-indigo-400",
+  "במחלוקת":      "border-r-4 border-orange-400",
   "שולם":         "border-r-4 border-green-400",
 };
 
@@ -84,6 +86,7 @@ const STATUS_CHIP_ACTIVE: Record<CollectionStatus, string> = {
   "בטיפול":       "bg-blue-500 text-white",
   "ממתין לתשלום": "bg-amber-500 text-white",
   "מועמד לתשלום": "bg-indigo-500 text-white",
+  "במחלוקת":      "bg-orange-500 text-white",
   "שולם":         "bg-green-500 text-white",
 };
 
@@ -153,9 +156,9 @@ interface SecondaryCardProps {
 
 function SecondaryCard({ label, value, count, variant, onClick, isActive }: SecondaryCardProps) {
   const s = {
-    yellow:  { wrap: "border-amber-200 bg-amber-50",  label: "text-amber-700", value: "text-amber-900", ring: "ring-amber-400" },
-    red:     { wrap: "border-red-200 bg-red-50",       label: "text-red-700",   value: "text-red-900",   ring: "ring-red-400"   },
-    neutral: { wrap: "border-gray-200 bg-white",       label: "text-gray-500",  value: "text-gray-900",  ring: ""               },
+    yellow:  { wrap: "border-amber-200 bg-amber-50",   label: "text-amber-700",  value: "text-amber-900",  ring: "ring-amber-400"  },
+    red:     { wrap: "border-red-200 bg-red-50",        label: "text-red-700",    value: "text-red-900",    ring: "ring-red-400"    },
+    neutral: { wrap: "border-gray-200 bg-white",        label: "text-gray-500",   value: "text-gray-900",   ring: ""                },
   }[variant];
   return (
     <button
@@ -250,26 +253,25 @@ export function CollectionsTable({
     [rows]
   );
 
-  // Summary always reflects active (non-שולם) documents only
+  // Summary always reflects active (non-שולם) documents only.
+  // "במחלוקת" docs are included in all totals — they remain open debt.
   const summary = useMemo(() => {
-    let totalBalance  = 0;
-    let balanceFresh  = 0;
-    let balance30to60 = 0;
-    let balance60plus = 0;
-    let countFresh    = 0;
-    let count30to60   = 0;
-    let count60plus   = 0;
-    let paidCount     = 0;
+    let totalBalance    = 0;
+    let balanceFresh    = 0;
+    let balance30to60   = 0;
+    let balance60plus   = 0;
+    let countFresh      = 0;
+    let count30to60     = 0;
+    let count60plus     = 0;
+    let paidCount       = 0;
 
     for (const r of enriched) {
-      if (statuses[docStatusKey(r)]?.status === "שולם") {
-        paidCount++;
-        continue;
-      }
+      const st = statuses[docStatusKey(r)]?.status;
+      if (st === "שולם") { paidCount++; continue; }
       totalBalance += r.remainingBalance;
-      if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++; }
-      if (r.band === "yellow") { balance30to60 += r.remainingBalance; count30to60++; }
-      if (r.band === "red")    { balance60plus += r.remainingBalance; count60plus++; }
+      if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++;   }
+      if (r.band === "yellow") { balance30to60 += r.remainingBalance; count30to60++;  }
+      if (r.band === "red")    { balance60plus += r.remainingBalance; count60plus++;  }
     }
 
     const activeRows = enriched.length - paidCount;
@@ -551,11 +553,14 @@ export function CollectionsTable({
               const effectiveStatus: CollectionStatus =
                 statuses[docStatusKey(row)]?.status ?? "לא טופל";
               const isPaid       = effectiveStatus === "שולם";
+              const isDisputed   = effectiveStatus === "במחלוקת";
               const borderClass  = STATUS_ROW_BORDER[effectiveStatus];
               const rowBg        = isSelected
                 ? ROW_BG_SELECTED
                 : isPaid
                 ? ROW_BG_PAID
+                : isDisputed
+                ? ROW_BG_DISPUTED
                 : ROW_BG[row.band];
               const rowKey = `${row.customerName}|${row.documentType}|${row.documentNumber}|${row.documentDate}`;
               return (

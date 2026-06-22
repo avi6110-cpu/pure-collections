@@ -1,19 +1,17 @@
 # CURRENT TASK
 
-## Document Selection for Communication Drafts — Complete
+## "במחלוקת" Dispute Status — Complete
 
 **Status:** Complete
-**Completed:** 2026-06-17
-**Assigned to:** Claude Code
+**Completed:** 2026-06-22
+**Commit:** (pending)
 
 ---
 
 ## Objective
 
-Replace "הבטיח לשלם" with "ממתין לתשלום".
-Add optional expected payment date per customer (ISO string, stored in CustomerStatus).
-Date shown only when status = "מועמד לתשלום"; hidden but preserved for all other statuses.
-Migrate existing localStorage entries silently on read.
+Add a per-document "במחלוקת" (dispute) status to the collection workflow.
+Disputed documents remain in totals and aging — dispute is a workflow flag, not a KPI.
 
 ---
 
@@ -21,26 +19,25 @@ Migrate existing localStorage entries silently on read.
 
 | Item | Result |
 |------|--------|
-| Replace `"הבטיח לשלם"` → `"ממתין לתשלום"` in union + array | Done ✓ |
-| `expectedPaymentDate?: string` added to `CustomerStatus` | Done ✓ |
-| Migrate-on-read in `readStatuses()` — writes back if changed | Done ✓ |
-| `handleSaveExpectedDate` in AppShell | Done ✓ |
-| Date picker in StatusSection (shown only for "מועמד לתשלום") | Done ✓ |
-| Auto-save on `onChange`, no extra button | Done ✓ |
-| Date hidden but preserved on status change | Done ✓ |
-| All style maps updated (STATUS_PILL, STATUS_ROW_BORDER, STATUS_CHIP_ACTIVE) | Done ✓ |
-| No new localStorage key | Done ✓ |
-| `npm run lint` | Clean ✓ |
-| `npm run build` | Clean, all pages static ✓ |
+| `"במחלוקת"` added to `CollectionStatus` union and `ALL_STATUSES` | Done ✓ |
+| Orange filter chip in status row | Done ✓ |
+| Orange row background in main table | Done ✓ |
+| Orange DocCard background in CustomerPanel | Done ✓ |
+| Mandatory dispute note before saving status | Done ✓ |
+| Activity log entry written on confirm (`סומן כ׳במחלוקת׳: <note>`) | Done ✓ |
+| Disputed docs included in `totalBalance` and aging bands | Done ✓ |
+| No dedicated KPI card (workflow status, not top-level metric) | Done ✓ |
+| Paid auto-deselect still works; WhatsApp/email flows unchanged | Done ✓ |
+| `npx tsc --noEmit` | Zero errors ✓ |
+| `npx next build` | Clean ✓ |
 
 ---
 
 ## Files Changed
 
-- `src/types/status.ts` — renamed status, added `expectedPaymentDate?`
-- `src/components/AppShell.tsx` — migrate-on-read, `handleSaveExpectedDate`, prop passthrough
-- `src/components/CollectionsTable.tsx` — style maps updated, prop threaded
-- `src/components/CustomerPanel.tsx` — date picker in StatusSection, style maps updated
+- `src/types/status.ts` — added `"במחלוקת"` to union and array
+- `src/components/CollectionsTable.tsx` — filter chip, row styling, STATUS maps
+- `src/components/CustomerPanel.tsx` — dispute note flow, DocCard orange styling, activity log
 
 ---
 

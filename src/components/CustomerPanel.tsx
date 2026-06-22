@@ -207,11 +207,12 @@ const CARD_BG: Record<EnrichedRow["band"], string> = {
 };
 
 const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }> = {
-  "לא טופל":      { active: "bg-gray-500 text-white border border-gray-500",     inactive: "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"     },
-  "בטיפול":       { active: "bg-blue-500 text-white border border-blue-500",      inactive: "bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"      },
-  "ממתין לתשלום": { active: "bg-amber-500 text-white border border-amber-500",    inactive: "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100"   },
-  "מועמד לתשלום": { active: "bg-indigo-500 text-white border border-indigo-500",  inactive: "bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100" },
-  "שולם":         { active: "bg-green-500 text-white border border-green-500",    inactive: "bg-green-50 text-green-600 border border-green-200 hover:bg-green-100"   },
+  "לא טופל":      { active: "bg-gray-500 text-white border border-gray-500",      inactive: "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"       },
+  "בטיפול":       { active: "bg-blue-500 text-white border border-blue-500",       inactive: "bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100"        },
+  "ממתין לתשלום": { active: "bg-amber-500 text-white border border-amber-500",     inactive: "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100"    },
+  "מועמד לתשלום": { active: "bg-indigo-500 text-white border border-indigo-500",   inactive: "bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100" },
+  "במחלוקת":      { active: "bg-orange-500 text-white border border-orange-500",   inactive: "bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100" },
+  "שולם":         { active: "bg-green-500 text-white border border-green-500",     inactive: "bg-green-50 text-green-600 border border-green-200 hover:bg-green-100"    },
 };
 
 const ACTIVITY_ICON: Record<ActivityType, string>  = { status_changed: "◎", whatsapp_opened: "W", email_opened: "@", manual_note: "•" };
@@ -372,6 +373,7 @@ export function CustomerPanel({
                   onSaveStatus={onSaveStatus}
                   onSaveExpectedDate={onSaveExpectedDate}
                   onPreview={onPreview}
+                  onAddActivity={onAddActivity}
                 />
               ))}
             </div>
@@ -746,18 +748,23 @@ interface DocCardProps {
   onSaveStatus:       (docKey: string, status: CollectionStatus) => void;
   onSaveExpectedDate: (docKey: string, date: string | undefined) => void;
   onPreview:          (documentType: string, documentNumber: number) => void;
+  onAddActivity:      (customerName: string, type: ActivityType, text: string) => void;
 }
 
-function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate, onPreview }: DocCardProps) {
-  const [statusOpen, setStatusOpen] = useState(false);
+function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate, onPreview, onAddActivity }: DocCardProps) {
+  const [statusOpen,      setStatusOpen]      = useState(false);
+  const [disputeNoteMode, setDisputeNoteMode] = useState(false);
+  const [disputeNote,     setDisputeNote]     = useState("");
 
   const effectiveStatus: CollectionStatus = docStatus?.status ?? "לא טופל";
-  const isPaid    = effectiveStatus === "שולם";
-  const statusKey = docStatusKey(doc);
+  const isPaid      = effectiveStatus === "שולם";
+  const isDisputed  = effectiveStatus === "במחלוקת";
+  const statusKey   = docStatusKey(doc);
 
   const cardBg =
-    isClicked ? "border-blue-300 bg-blue-50" :
-    isPaid    ? "bg-green-50 border-green-200" :
+    isClicked   ? "border-blue-300 bg-blue-50" :
+    isPaid      ? "bg-green-50 border-green-200" :
+    isDisputed  ? "bg-orange-50 border-orange-200" :
     CARD_BG[doc.band];
 
   const balanceColor =
@@ -816,27 +823,74 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
         {/* Row 3: per-document status picker */}
         <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
           {statusOpen ? (
-            <div className="flex flex-wrap items-center gap-1">
-              {ALL_STATUSES.map((s) => (
+            disputeNoteMode ? (
+              /* Dispute note — required before confirming "במחלוקת" */
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-orange-700">סיבת המחלוקת (חובה)</p>
+                <textarea
+                  value={disputeNote}
+                  onChange={(e) => setDisputeNote(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setDisputeNote(""); setDisputeNoteMode(false); setStatusOpen(false); } }}
+                  placeholder="מה טוען הלקוח?"
+                  rows={2}
+                  autoFocus
+                  className="w-full rounded-lg border border-orange-300 bg-orange-50 px-3 py-1.5 text-xs placeholder:text-orange-300 focus:border-orange-400 focus:outline-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={disputeNote.trim().length === 0}
+                    onClick={() => {
+                      const note = disputeNote.trim();
+                      onSaveStatus(statusKey, "במחלוקת");
+                      onAddActivity(doc.customerName, "status_changed", `סומן כ׳במחלוקת׳: ${note}`);
+                      setDisputeNote("");
+                      setDisputeNoteMode(false);
+                      setStatusOpen(false);
+                    }}
+                    className="rounded-full bg-orange-500 px-3 py-0.5 text-xs text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    אשר
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDisputeNote(""); setDisputeNoteMode(false); setStatusOpen(false); }}
+                    className="rounded-full px-2 py-0.5 text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    ביטול
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1">
+                {ALL_STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      if (s === "במחלוקת") {
+                        setDisputeNoteMode(true);
+                      } else {
+                        onSaveStatus(statusKey, s);
+                        setStatusOpen(false);
+                      }
+                    }}
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                      s === effectiveStatus ? STATUS_PILL[s].active : STATUS_PILL[s].inactive
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
                 <button
-                  key={s}
                   type="button"
-                  onClick={() => { onSaveStatus(statusKey, s); setStatusOpen(false); }}
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                    s === effectiveStatus ? STATUS_PILL[s].active : STATUS_PILL[s].inactive
-                  }`}
+                  onClick={() => setStatusOpen(false)}
+                  className="rounded-full px-2 py-0.5 text-xs text-gray-400 hover:text-gray-600"
                 >
-                  {s}
+                  ✕
                 </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setStatusOpen(false)}
-                className="rounded-full px-2 py-0.5 text-xs text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
+              </div>
+            )
           ) : (
             <button
               type="button"
