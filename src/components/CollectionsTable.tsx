@@ -259,52 +259,58 @@ export function CollectionsTable({
     [rows]
   );
 
-  // Summary always reflects active (non-שולם) documents only.
-  // "במחלוקת" docs are included in all totals — they remain open debt.
-  const summary = useMemo(() => {
-    let totalBalance       = 0;
-    let balanceFresh       = 0;
-    let balance30to60      = 0;
-    let balance60plus      = 0;
-    let countFresh         = 0;
-    let count30to60        = 0;
-    let count60plus        = 0;
-    let paidCount          = 0;
-    let todayFollowUpCount = 0;
-
-    for (const r of enriched) {
-      const docSt = statuses[docStatusKey(r)];
-      const st    = docSt?.status;
-      if (isTodayFollowUp(docSt, TODAY_STR)) todayFollowUpCount++;
-      if (st === "שולם") { paidCount++; continue; }
-      totalBalance += r.remainingBalance;
-      if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++;   }
-      if (r.band === "yellow") { balance30to60 += r.remainingBalance; count30to60++;  }
-      if (r.band === "red")    { balance60plus += r.remainingBalance; count60plus++;  }
-    }
-
-    const activeRows = enriched.length - paidCount;
-    return {
-      totalRows: enriched.length,
-      activeRows,
-      paidCount,
-      totalBalance,
-      balanceFresh,
-      countFresh,
-      balance30to60,
-      balance60plus,
-      count30to60,
-      count60plus,
-      todayFollowUpCount,
-    };
-  }, [enriched, statuses]);
-
   // Actionable rows only — credit invoices are accounting context, not work items.
-  // They remain in `enriched` so KPI balance sums include their negative values.
+  // They remain in `enriched` so the net KPI balance includes their negative values.
   const tableRows: EnrichedRow[] = useMemo(
     () => enriched.filter((r) => r.documentType !== CREDIT_INVOICE_TYPE),
     [enriched],
   );
+
+  // ── Summary ──────────────────────────────────────────────────────────────
+  // Two separate passes, two separate concerns:
+  //
+  // Pass 1 — enriched (all rows, Rivhit source of truth):
+  //   totalBalance: net outstanding including credit invoice offsets.
+  //
+  // Pass 2 — tableRows (actionable invoices only):
+  //   Band KPIs (60+, 30–60, <30): collection work prioritisation.
+  //   counts, paidCount, activeRows: describe the actionable work queue.
+  //
+  // Clicking a band KPI card filters tableRows → counts match table exactly.
+  const summary = useMemo(() => {
+    // Pass 1: net balance from full dataset
+    let totalBalance       = 0;
+    let todayFollowUpCount = 0;
+    for (const r of enriched) {
+      const docSt = statuses[docStatusKey(r)];
+      if (isTodayFollowUp(docSt, TODAY_STR)) todayFollowUpCount++;
+      if (docSt?.status !== "שולם") totalBalance += r.remainingBalance;
+    }
+
+    // Pass 2: band KPIs and queue counts from actionable rows only
+    let balanceFresh  = 0, balance30to60 = 0, balance60plus = 0;
+    let countFresh    = 0, count30to60   = 0, count60plus   = 0;
+    let paidCount     = 0;
+    for (const r of tableRows) {
+      const st = statuses[docStatusKey(r)]?.status;
+      if (st === "שולם") { paidCount++; continue; }
+      if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++;  }
+      if (r.band === "yellow") { balance30to60 += r.remainingBalance; count30to60++; }
+      if (r.band === "red")    { balance60plus += r.remainingBalance; count60plus++; }
+    }
+
+    const activeRows = tableRows.length - paidCount;
+    return {
+      totalRows: tableRows.length,
+      activeRows,
+      paidCount,
+      totalBalance,
+      balanceFresh,  countFresh,
+      balance30to60, count30to60,
+      balance60plus, count60plus,
+      todayFollowUpCount,
+    };
+  }, [enriched, tableRows, statuses]);
 
   // 1. Band filter — "שולם" docs are excluded when a specific band is active
   const bandFiltered: EnrichedRow[] = useMemo(() => {
