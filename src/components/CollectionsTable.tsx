@@ -9,9 +9,13 @@ import type { ContactMap, CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
+import { isTodayFollowUp, todayDateStr } from "@/lib/followUp";
 import { CustomerPanel } from "@/components/CustomerPanel";
 import { DocumentPreviewModal, EyeIcon } from "@/components/DocumentPreviewModal";
 import type { ImportSource, SyncStats } from "@/components/AppShell";
+
+// Computed once at module load — stable for the entire browser session.
+const TODAY_STR = todayDateStr();
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -214,12 +218,13 @@ export function CollectionsTable({
   activityLog,
   onAddActivity,
 }: CollectionsTableProps) {
-  const [query,              setQuery]              = useState("");
-  const [sortCol,            setSortCol]            = useState<SortColumn>("remainingBalance");
-  const [sortDir,            setSortDir]            = useState<SortDir>("desc");
-  const [selectedRow,        setSelectedRow]        = useState<EnrichedRow | null>(null);
-  const [activeFilter,       setActiveFilter]       = useState<ActiveFilter>("all");
-  const [activeStatusFilter, setActiveStatusFilter] = useState<StatusFilter>("all");
+  const [query,                setQuery]                = useState("");
+  const [sortCol,              setSortCol]              = useState<SortColumn>("remainingBalance");
+  const [sortDir,              setSortDir]              = useState<SortDir>("desc");
+  const [selectedRow,          setSelectedRow]          = useState<EnrichedRow | null>(null);
+  const [activeFilter,         setActiveFilter]         = useState<ActiveFilter>("all");
+  const [activeStatusFilter,   setActiveStatusFilter]   = useState<StatusFilter>("all");
+  const [todayFollowUpFilter,  setTodayFollowUpFilter]  = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ documentType: string; documentNumber: number } | null>(null);
 
   const closePanel   = useCallback(() => setSelectedRow(null), []);
@@ -256,17 +261,20 @@ export function CollectionsTable({
   // Summary always reflects active (non-שולם) documents only.
   // "במחלוקת" docs are included in all totals — they remain open debt.
   const summary = useMemo(() => {
-    let totalBalance    = 0;
-    let balanceFresh    = 0;
-    let balance30to60   = 0;
-    let balance60plus   = 0;
-    let countFresh      = 0;
-    let count30to60     = 0;
-    let count60plus     = 0;
-    let paidCount       = 0;
+    let totalBalance       = 0;
+    let balanceFresh       = 0;
+    let balance30to60      = 0;
+    let balance60plus      = 0;
+    let countFresh         = 0;
+    let count30to60        = 0;
+    let count60plus        = 0;
+    let paidCount          = 0;
+    let todayFollowUpCount = 0;
 
     for (const r of enriched) {
-      const st = statuses[docStatusKey(r)]?.status;
+      const docSt = statuses[docStatusKey(r)];
+      const st    = docSt?.status;
+      if (isTodayFollowUp(docSt, TODAY_STR)) todayFollowUpCount++;
       if (st === "שולם") { paidCount++; continue; }
       totalBalance += r.remainingBalance;
       if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++;   }
@@ -286,6 +294,7 @@ export function CollectionsTable({
       balance60plus,
       count30to60,
       count60plus,
+      todayFollowUpCount,
     };
   }, [enriched, statuses]);
 
@@ -310,17 +319,23 @@ export function CollectionsTable({
     });
   }, [bandFiltered, activeStatusFilter, statuses]);
 
-  // 3. Search filter
+  // 3. "לטיפול היום" filter — AND-logic with band + status filters
+  const followUpFiltered: EnrichedRow[] = useMemo(() => {
+    if (!todayFollowUpFilter) return statusFiltered;
+    return statusFiltered.filter((r) => isTodayFollowUp(statuses[docStatusKey(r)], TODAY_STR));
+  }, [statusFiltered, todayFollowUpFilter, statuses]);
+
+  // 4. Search filter
   const filtered: EnrichedRow[] = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return statusFiltered;
-    return statusFiltered.filter(
+    if (!q) return followUpFiltered;
+    return followUpFiltered.filter(
       (r) =>
         r.customerName.toLowerCase().includes(q) ||
         String(r.documentNumber).includes(q) ||
         r.documentType.toLowerCase().includes(q)
     );
-  }, [statusFiltered, query]);
+  }, [followUpFiltered, query]);
 
   // 4. Sort, then push "שולם" rows to the bottom
   const displayed: EnrichedRow[] = useMemo(() => {
@@ -344,7 +359,7 @@ export function CollectionsTable({
   const customerActivity: ActivityEntry[] =
     selectedRow !== null ? (activityLog[selectedRow.customerName] ?? []) : [];
 
-  const filtersActive = activeFilter !== "all" || activeStatusFilter !== "all";
+  const filtersActive = activeFilter !== "all" || activeStatusFilter !== "all" || todayFollowUpFilter;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
@@ -501,7 +516,7 @@ export function CollectionsTable({
             {filtersActive && (
               <button
                 type="button"
-                onClick={() => { setActiveFilter("all"); setActiveStatusFilter("all"); }}
+                onClick={() => { setActiveFilter("all"); setActiveStatusFilter("all"); setTodayFollowUpFilter(false); }}
                 className="mr-2 text-xs text-blue-600 hover:text-blue-800"
               >
                 נקה הכל
@@ -510,7 +525,7 @@ export function CollectionsTable({
           </p>
         </div>
 
-        {/* Row 2: status filter chips (always visible) */}
+        {/* Row 2: status filter chips + "לטיפול היום" chip */}
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
           <span className="shrink-0 text-xs text-gray-400">סטטוס:</span>
           {ALL_STATUSES.map((s) => (
@@ -527,6 +542,22 @@ export function CollectionsTable({
               {s}
             </button>
           ))}
+          {(summary.todayFollowUpCount > 0 || todayFollowUpFilter) && (
+            <>
+              <span className="text-gray-300">|</span>
+              <button
+                type="button"
+                onClick={() => setTodayFollowUpFilter((v) => !v)}
+                className={`rounded-full px-3 py-0.5 text-xs font-semibold transition-colors ${
+                  todayFollowUpFilter
+                    ? "bg-rose-600 text-white"
+                    : "bg-rose-50 text-rose-700 ring-1 ring-rose-300 hover:bg-rose-100"
+                }`}
+              >
+                לטיפול היום ({summary.todayFollowUpCount})
+              </button>
+            </>
+          )}
         </div>
       </div>
 

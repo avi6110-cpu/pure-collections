@@ -7,8 +7,12 @@ import type { CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityEntry, ActivityType } from "@/types/activity";
+import { isTodayFollowUp, todayDateStr } from "@/lib/followUp";
 import { EyeIcon } from "@/components/DocumentPreviewModal";
 import { DOC_TYPE_NUM } from "@/lib/parseRivhitApi";
+
+// Computed once at module load — stable for the entire browser session.
+const TODAY_STR = todayDateStr();
 
 // ── Invisible-character sanitizer ────────────────────────────────────────────
 // Rivhit embeds RTL marks and zero-width chars in strings. trim() misses them
@@ -759,6 +763,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
   const effectiveStatus: CollectionStatus = docStatus?.status ?? "לא טופל";
   const isPaid      = effectiveStatus === "שולם";
   const isDisputed  = effectiveStatus === "במחלוקת";
+  const isFollowUp  = isTodayFollowUp(docStatus, TODAY_STR);
   const statusKey   = docStatusKey(doc);
 
   const cardBg =
@@ -809,15 +814,22 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
           </p>
         </div>
 
-        {/* Row 2: date + due date | age badge */}
+        {/* Row 2: date + due date | follow-up badge + age badge */}
         <div className="mt-1.5 flex items-center justify-between gap-2">
           <p className="text-right text-xs text-gray-500">
             {doc.documentDate}
             {doc.dueDate !== "" && <span className="text-gray-400"> · פרעון: {doc.dueDate}</span>}
           </p>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}>
-            {doc.ageDays} יום
-          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {isFollowUp && (
+              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                לטיפול היום
+              </span>
+            )}
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${BAND_BADGE[doc.band]}`}>
+              {doc.ageDays} יום
+            </span>
+          </div>
         </div>
 
         {/* Row 3: per-document status picker */}
