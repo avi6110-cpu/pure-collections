@@ -1,3 +1,7 @@
+// ── Document type constants ───────────────────────────────────────────────────
+
+export const CREDIT_INVOICE_TYPE = "חשבונית מס זיכוי" as const;
+
 // ── Public row type ───────────────────────────────────────────────────────────
 
 export interface RivhitRow {

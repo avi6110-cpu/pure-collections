@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { EnrichedRow } from "@/types/collections";
-import { docStatusKey } from "@/lib/parseRivhit";
+import { docStatusKey, CREDIT_INVOICE_TYPE } from "@/lib/parseRivhit";
 import type { CustomerContact } from "@/types/contacts";
 import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
@@ -292,7 +292,9 @@ export function CustomerPanel({
 
   function selectAll() {
     setSelectedDocs(new Set(
-      customerRows.filter((r) => statuses[docStatusKey(r)]?.status !== "שולם").map(docKey)
+      customerRows
+        .filter((r) => statuses[docStatusKey(r)]?.status !== "שולם" && r.documentType !== CREDIT_INVOICE_TYPE)
+        .map(docKey)
     ));
   }
 
@@ -760,6 +762,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
   const [disputeNoteMode, setDisputeNoteMode] = useState(false);
   const [disputeNote,     setDisputeNote]     = useState("");
 
+  const isCredit    = doc.documentType === CREDIT_INVOICE_TYPE;
   const effectiveStatus: CollectionStatus = docStatus?.status ?? "לא טופל";
   const isPaid      = effectiveStatus === "שולם";
   const isDisputed  = effectiveStatus === "במחלוקת";
@@ -767,16 +770,61 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
   const statusKey   = docStatusKey(doc);
 
   const cardBg =
+    isCredit    ? "border-gray-200 bg-gray-50" :
     isClicked   ? "border-blue-300 bg-blue-50" :
     isPaid      ? "bg-green-50 border-green-200" :
     isDisputed  ? "bg-orange-50 border-orange-200" :
     CARD_BG[doc.band];
 
   const balanceColor =
-    doc.remainingBalance < 0 ? "text-green-700" :
+    isCredit || doc.remainingBalance < 0 ? "text-green-700" :
     isPaid               ? "text-green-700" :
     doc.band === "red"   ? "text-red-700"   :
     "text-gray-900";
+
+  // Credit invoices are accounting context — no checkbox, no status picker,
+  // no selection interaction.
+  if (isCredit) {
+    return (
+      <div className="flex items-start gap-2">
+        {/* Placeholder to keep alignment with regular DocCards */}
+        <div className="mt-[14px] h-4 w-4 shrink-0" />
+        <div className={`flex-1 rounded-lg border px-4 py-3 ${cardBg}`}>
+          {/* Row 1: document type + number + eye button | balance */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <p className="text-right text-sm font-semibold text-gray-500">
+                {doc.documentType}
+                <span className="mx-1 text-gray-300">·</span>
+                <span className="font-normal tabular-nums text-gray-400">{doc.documentNumber}</span>
+              </p>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onPreview(doc.documentType, doc.documentNumber); }}
+                aria-label={`צפה במסמך ${doc.documentNumber}`}
+                className="shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-white/70 hover:text-indigo-600"
+              >
+                <EyeIcon size={13} />
+              </button>
+            </div>
+            <p className={`shrink-0 text-left text-sm font-bold tabular-nums ${balanceColor}`}>
+              {fmtCurrency(doc.remainingBalance)}
+            </p>
+          </div>
+          {/* Row 2: date | "זיכוי" label */}
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <p className="text-right text-xs text-gray-400">
+              {doc.documentDate}
+              {doc.dueDate !== "" && <span> · פרעון: {doc.dueDate}</span>}
+            </p>
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+              זיכוי
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-start gap-2">

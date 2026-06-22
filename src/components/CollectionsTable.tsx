@@ -10,6 +10,7 @@ import type { CollectionStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { isTodayFollowUp, todayDateStr } from "@/lib/followUp";
+import { CREDIT_INVOICE_TYPE } from "@/lib/parseRivhit";
 import { CustomerPanel } from "@/components/CustomerPanel";
 import { DocumentPreviewModal, EyeIcon } from "@/components/DocumentPreviewModal";
 import type { ImportSource, SyncStats } from "@/components/AppShell";
@@ -298,14 +299,21 @@ export function CollectionsTable({
     };
   }, [enriched, statuses]);
 
+  // Actionable rows only — credit invoices are accounting context, not work items.
+  // They remain in `enriched` so KPI balance sums include their negative values.
+  const tableRows: EnrichedRow[] = useMemo(
+    () => enriched.filter((r) => r.documentType !== CREDIT_INVOICE_TYPE),
+    [enriched],
+  );
+
   // 1. Band filter — "שולם" docs are excluded when a specific band is active
   const bandFiltered: EnrichedRow[] = useMemo(() => {
-    if (activeFilter === "all") return enriched;
-    return enriched.filter((r) => {
+    if (activeFilter === "all") return tableRows;
+    return tableRows.filter((r) => {
       if (statuses[docStatusKey(r)]?.status === "שולם") return false;
       return r.band === activeFilter;
     });
-  }, [enriched, activeFilter, statuses]);
+  }, [tableRows, activeFilter, statuses]);
 
   // 2. Status filter — undefined entry treated as "לא טופל"
   const statusFiltered: EnrichedRow[] = useMemo(() => {
@@ -512,7 +520,7 @@ export function CollectionsTable({
           <p className="shrink-0 text-sm text-gray-500">
             <span className="font-semibold text-gray-800">{displayed.length}</span>
             {" "}מתוך{" "}
-            <span className="font-semibold text-gray-800">{summary.totalRows}</span>
+            <span className="font-semibold text-gray-800">{tableRows.length}</span>
             {filtersActive && (
               <button
                 type="button"
