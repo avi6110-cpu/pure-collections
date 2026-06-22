@@ -18,10 +18,27 @@ export function todayDateStr(): string {
   return `${y}-${m}-${d}`;
 }
 
+// Count business days (Sun–Thu; Fri=5 and Sat=6 are skipped) in the
+// half-open interval (from, to].  Returns 0 when to <= from.
+function businessDaysDiff(from: string, to: string): number {
+  const startMs = parseDateLocal(from);
+  const endMs   = parseDateLocal(to);
+  if (endMs <= startMs) return 0;
+  let count = 0;
+  let cur = startMs + 86_400_000; // day after 'from'
+  while (cur <= endMs) {
+    const dow = new Date(cur).getDay(); // 0=Sun,1=Mon,...,5=Fri,6=Sat
+    if (dow !== 5 && dow !== 6) count++;
+    cur += 86_400_000;
+  }
+  return count;
+}
+
 // A document requires today's follow-up when:
 //   status === "מועמד לתשלום"
 //   expectedPaymentDate is set
-//   today is at least 3 days after that date (grace period for bank transfers)
+//   today is at least 3 BUSINESS days after that date
+//   (Friday and Saturday are not counted — bank transfers, Shabbat)
 export function isTodayFollowUp(
   docStatus: DocumentStatus | undefined,
   today: string,
@@ -29,8 +46,5 @@ export function isTodayFollowUp(
   if (!docStatus || docStatus.status !== "מועמד לתשלום") return false;
   const epd = docStatus.expectedPaymentDate;
   if (!epd) return false;
-  const daysDiff = Math.floor(
-    (parseDateLocal(today) - parseDateLocal(epd)) / 86_400_000,
-  );
-  return daysDiff >= 3;
+  return businessDaysDiff(epd, today) >= 3;
 }
