@@ -142,7 +142,7 @@ async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<{ map: Map<strin
 
 // ── Message builders ─────────────────────────────────────────────────────────
 
-function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: Map<string, string>): string {
+function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: Map<string, string>, hasCreditInvoices: boolean): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
   const docLines = sorted.flatMap((r) => {
@@ -160,6 +160,10 @@ function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: 
     `מסמכים פתוחים:`,
     ...docLines,
     ``,
+    ...(hasCreditInvoices ? [
+      `לתשומת לב: בכרטיס הלקוח קיימים זיכויים/קיזוזים שעשויים להשפיע על היתרה הסופית.`,
+      ``,
+    ] : []),
     `נשמח לקבל את תשלומכם בהקדם האפשרי.`,
     ``,
     `תודה,`,
@@ -167,7 +171,7 @@ function buildWhatsAppMessage(customerName: string, rows: EnrichedRow[], links: 
   ].join("\n");
 }
 
-function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[], links: Map<string, string>): string {
+function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[], links: Map<string, string>, hasCreditInvoices: boolean): string {
   const sorted = [...rows].sort((a, b) => b.ageDays - a.ageDays);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
   const docLines = sorted.flatMap((r) => {
@@ -186,6 +190,10 @@ function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[],
     `פירוט מסמכים:`,
     ...docLines,
     ``,
+    ...(hasCreditInvoices ? [
+      `לתשומת לב: בכרטיס הלקוח קיימים זיכויים/קיזוזים שעשויים להשפיע על היתרה הסופית.`,
+      ``,
+    ] : []),
     `נבקשך לסדר את התשלום בהקדם האפשרי.`,
     `לפרטים נוספים אנא צור עמנו קשר.`,
     ``,
@@ -262,13 +270,17 @@ export function CustomerPanel({
   }, [clickedRow, onClose]);
 
   // ── Document selection ────────────────────────────────────────────────────
-  // Default: all open non-paid non-credit docs. Matches "בחר הכל" button exactly.
+  // Default: all open docs excluding paid, disputed, and credit invoices.
+  // "בחר הכל" differs — it includes disputed (explicit clerk override).
   // CustomerPanel remounts on customer switch (key={customerName} in CollectionsTable)
   // so this initializer always runs fresh.
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(
     () => new Set(
       customerRows
-        .filter((r) => statuses[docStatusKey(r)]?.status !== "שולם" && r.documentType !== CREDIT_INVOICE_TYPE)
+        .filter((r) => {
+          const s = statuses[docStatusKey(r)]?.status;
+          return s !== "שולם" && s !== "במחלוקת" && r.documentType !== CREDIT_INVOICE_TYPE;
+        })
         .map(docKey)
     )
   );
@@ -300,15 +312,18 @@ export function CustomerPanel({
 
   function deselectAll() { setSelectedDocs(new Set()); }
 
-  // When a doc's status becomes "שולם", drop it from the selection immediately
+  // When a doc's status becomes "שולם" or "במחלוקת", drop it from selection immediately
   useEffect(() => {
     setSelectedDocs((prev) => {
-      const paidKeys = customerRows
-        .filter((r) => prev.has(docKey(r)) && statuses[docStatusKey(r)]?.status === "שולם")
+      const keysToRemove = customerRows
+        .filter((r) => {
+          const s = statuses[docStatusKey(r)]?.status;
+          return prev.has(docKey(r)) && (s === "שולם" || s === "במחלוקת");
+        })
         .map(docKey);
-      if (paidKeys.length === 0) return prev;
+      if (keysToRemove.length === 0) return prev;
       const next = new Set(prev);
-      paidKeys.forEach((k) => next.delete(k));
+      keysToRemove.forEach((k) => next.delete(k));
       return next;
     });
   }, [statuses, customerRows]);
@@ -318,10 +333,11 @@ export function CustomerPanel({
   const activeDocs = customerRows.filter((r) => statuses[docStatusKey(r)]?.status !== "שולם");
   const paidDocs   = customerRows.filter((r) => statuses[docStatusKey(r)]?.status === "שולם");
 
-  const totalBalance  = activeDocs.reduce((s, r) => s + r.remainingBalance, 0);
-  const docCount      = activeDocs.length;
-  const maxAgeDays    = activeDocs.reduce((m, r) => Math.max(m, r.ageDays), 0);
-  const balance60plus = activeDocs.filter((r) => r.band === "red").reduce((s, r) => s + r.remainingBalance, 0);
+  const totalBalance     = activeDocs.reduce((s, r) => s + r.remainingBalance, 0);
+  const docCount         = activeDocs.length;
+  const maxAgeDays       = activeDocs.reduce((m, r) => Math.max(m, r.ageDays), 0);
+  const balance60plus    = activeDocs.filter((r) => r.band === "red").reduce((s, r) => s + r.remainingBalance, 0);
+  const hasCreditInvoices = customerRows.some((r) => r.documentType === CREDIT_INVOICE_TYPE);
 
   // Active docs first (by age desc), then paid docs at bottom
   const sortedDocs = useMemo(() => {
@@ -391,6 +407,7 @@ export function CustomerPanel({
             selectedRows={selectedRows}
             contact={contact}
             onAddActivity={onAddActivity}
+            hasCreditInvoices={hasCreditInvoices}
           />
 
           {/* ── 4. Summary strip — compact horizontal row ─────────────────── */}
@@ -593,13 +610,14 @@ function StatChip({ label, value, emphasis = false, danger = false }: {
 // ── CommunicationSection ────────────────────────────────────────────────────
 
 interface CommunicationSectionProps {
-  customerName:  string;
-  selectedRows:  EnrichedRow[];
-  contact:       CustomerContact | undefined;
-  onAddActivity: (customerName: string, type: ActivityType, text: string) => void;
+  customerName:      string;
+  selectedRows:      EnrichedRow[];
+  contact:           CustomerContact | undefined;
+  onAddActivity:     (customerName: string, type: ActivityType, text: string) => void;
+  hasCreditInvoices: boolean;
 }
 
-function CommunicationSection({ customerName, selectedRows, contact, onAddActivity }: CommunicationSectionProps) {
+function CommunicationSection({ customerName, selectedRows, contact, onAddActivity, hasCreditInvoices }: CommunicationSectionProps) {
   const phone      = contact?.phone;
   const email      = contact?.email;
   const noSelected = selectedRows.length === 0;
@@ -624,7 +642,7 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     if (!phone || noSelected) return;
     setBusy(true);
     const links = await fetchLinks();
-    const msg = buildWhatsAppMessage(customerName, selectedRows, links);
+    const msg = buildWhatsAppMessage(customerName, selectedRows, links, hasCreditInvoices);
     window.open(`https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
     onAddActivity(customerName, "whatsapp_opened", "טיוטת WhatsApp נפתחה");
     setBusy(false);
@@ -634,7 +652,7 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     if (!email || noSelected) return;
     setBusy(true);
     const links = await fetchLinks();
-    window.location.href = buildEmailUrl(email, customerName, selectedRows, links);
+    window.location.href = buildEmailUrl(email, customerName, selectedRows, links, hasCreditInvoices);
     onAddActivity(customerName, "email_opened", "טיוטת אימייל נפתחה");
     setBusy(false);
   }
