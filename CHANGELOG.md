@@ -11,6 +11,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.25.0] — 2026-06-22 — Business-Days Today Follow-Up Grace Period
+
+### Fixed
+- Today Follow-Up grace period now uses business days (Sunday–Thursday in Israel) instead of calendar days. A document whose follow-up date falls on a Friday will not carry over the weekend as overdue; weekends are skipped.
+- `isTodayFollowUp()` in `src/lib/followUp.ts` updated to count only working days.
+
+---
+
+## [0.24.0] — 2026-06-22 — Urgency-First Default Sort
+
+### Changed
+- Default table sort order changed from alphabetical by customer name to urgency-first: red band (60+ days) rows first, then yellow (30–60 days), then fresh (<30 days). Within each band, rows sorted by remaining balance descending.
+- `BAND_RANK` map introduced in `sortRows()` in `CollectionsTable.tsx` to group by aging band before comparing balance.
+
+---
+
+## [0.23.0] — 2026-06-22 — CustomerPanel Default Selection Fix
+
+### Fixed
+- Default document selection in CustomerPanel changed from "docs ≥ 30 days overdue" to "all non-credit, non-paid open documents." The previous logic caused the panel to open with only a tiny overdue amount selected when a customer had large fresh invoices alongside a small old one (e.g. ₪28 selected instead of ₪21,974).
+- Credit invoices are excluded from the default selection.
+
+---
+
+## [0.22.0] — 2026-06-22 — Today Follow-Up Filter
+
+### Added
+- "לטיפול היום" filter chip in the collections workspace — filters the table to rows where a follow-up date is set and falls on today or earlier.
+- `isTodayFollowUp(date: string): boolean` and `todayDateStr(): string` exported from new `src/lib/followUp.ts`.
+- Both `CollectionsTable.tsx` and `CustomerPanel.tsx` import from `followUp.ts`.
+
+---
+
+## [0.21.0] — 2026-06-22 — Per-Document Dispute Status
+
+### Added
+- `"במחלוקת"` (disputed) added to `DocumentStatus` union in `src/types/status.ts`.
+- Documents marked as disputed receive distinct orange visual treatment in both the workspace table row and in the CustomerPanel document list.
+
+---
+
 ## [0.20.0] — 2026-06-22 — KPI Band Alignment Fix
 
 ### Fixed

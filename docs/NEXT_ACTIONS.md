@@ -3,7 +3,7 @@
 > Daily working document. Updated at the start and end of each session.
 > For project-level status see [MASTER_STATUS.md](./MASTER_STATUS.md).
 
-Last Updated: 2026-06-18 (Settings page cleaned)
+Last Updated: 2026-06-23 (docs synced to edb4fd2)
 
 ---
 
@@ -25,7 +25,7 @@ Last Updated: 2026-06-18 (Settings page cleaned)
 
 ## 2. In Progress
 
-- [ ] **Landing screen redesign** — two first-class import options: Excel upload and Rivhit API token entry. Currently in active UI work.
+None currently.
 
 ---
 
@@ -54,14 +54,18 @@ None currently.
 
 ## 5. Recently Completed
 
-- [x] Document selection for communication drafts (2026-06-17) — per-document checkboxes, default 30+d selected, WhatsApp/Email disabled when empty
-- [x] Refined statuses — "הבטיח לשלם" → "ממתין לתשלום"; expected payment date field (2026-06-17)
+- [x] Business-days Today Follow-Up grace period (2026-06-22) — commit `edb4fd2`
+- [x] Urgency-first default sort: red → yellow → fresh, balance within band (2026-06-22) — commit `151a034`
+- [x] CustomerPanel default selection fix — all non-credit open docs selected by default (2026-06-22) — commit `701ce04`
+- [x] Today Follow-Up filter chip in workspace (2026-06-22) — commit `43ebd48`
+- [x] Per-document dispute status "במחלוקת" (2026-06-22) — commit `dfd5190`
+- [x] KPI band alignment — band KPIs now sourced from actionable `tableRows` (2026-06-22) — commit `4ac65c7`
+- [x] Credit invoice exclusion from collections work queue (2026-06-22) — commit `3c90168`
+- [x] Landing screen redesign — two first-class import options (2026-06-18) — commit `bda31dc`
+- [x] Clean Settings page — moved dev tools to `/dev` (2026-06-18) — commit `3c6b233`
+- [x] Net +30 overdue calculation (BUG-002) (2026-06-18) — commit `725121a`
+- [x] Fix customer contact carry-over bug (BUG-001) (2026-06-18) — commit `e003b2d`
+- [x] Rivhit API sync — open documents + contact autofill (2026-06-17)
+- [x] Document selection for communication drafts (2026-06-17)
 - [x] Customer activity timeline (2026-06-17)
 - [x] Customer collection status workflow (2026-06-17)
-- [x] KPI card filters + customer contacts (2026-06-17)
-- [x] Customer detail slide-over panel (2026-06-16)
-- [x] Rivhit API sync — open documents + contact autofill (2026-06-17)
-- [x] Clean Settings page — moved dev tools to `/dev` (2026-06-18) — commit `3c6b233`
-- [x] Implement Net +30 overdue calculation — BUG-002 (2026-06-18) — commit `725121a`
-- [x] Fix customer contact carry-over bug — BUG-001 (2026-06-18) — commit `e003b2d`
-- [x] Rivhit API connection settings page (2026-06-16)

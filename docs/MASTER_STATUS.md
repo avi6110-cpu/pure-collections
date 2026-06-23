@@ -66,11 +66,10 @@ DiveLoop (the other project) is paused until Collections reaches paying customer
 See [COMMERCIAL_PLAN.md](./COMMERCIAL_PLAN.md) for the full business rationale.
 
 Current priority order:
-1. Fix contact carry-over bug (blocks trust in the product)
-2. Implement Net +30 overdue calculation (core business rule)
-3. Validate and clean communication flows
-4. Prepare WhatsApp automation planning
-5. Clean Settings page
+1. Validate and clean communication flows end-to-end
+2. Prepare WhatsApp automation planning and architecture
+3. Export / print view for the collections workspace
+4. Cloud deployment preparation
 
 ---
 
@@ -145,10 +144,7 @@ Current priority order:
 
 See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) for full details.
 
-| # | Issue | Severity |
-|---|---|---|
-| 1 | Customer contact carry-over bug | High |
-| 2 | Net +30 overdue calculation not implemented | Medium |
+None. All known bugs are closed.
 
 ---
 
@@ -179,11 +175,18 @@ See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) for full details.
 ## 7. Roadmap
 
 ### Active (Phase 3 — Core UI & Layout)
-- [ ] Fix customer contact carry-over bug
-- [ ] Implement Net +30 overdue calculation
-- [ ] Validate and clean WhatsApp / email communication flow
-- [ ] Redesign landing/import screen (two first-class options)
-- [ ] Clean Settings page (remove developer tools section from production UI)
+- [x] Fix customer contact carry-over bug — `e003b2d`
+- [x] Implement Net +30 overdue calculation — `725121a`
+- [x] Redesign landing/import screen (two first-class options) — `bda31dc`
+- [x] Clean Settings page (move developer tools to `/dev`) — `3c6b233`
+- [x] Exclude credit invoices from work queue — `3c90168`
+- [x] KPI band alignment fix — `4ac65c7`
+- [x] Per-document dispute status "במחלוקת" — `dfd5190`
+- [x] Today Follow-Up filter — `43ebd48`
+- [x] CustomerPanel default selection fix — `701ce04`
+- [x] Urgency-first default sort — `151a034`
+- [x] Business-days Today Follow-Up grace period — `edb4fd2`
+- [ ] Validate and clean WhatsApp / email communication flow end-to-end
 
 ### Next (Phase 4 — Business Logic & Data)
 - [ ] WhatsApp automation planning and architecture
@@ -249,9 +252,9 @@ See [COMMERCIAL_PLAN.md](./COMMERCIAL_PLAN.md) for full detail.
 
 | Field | Value |
 |---|---|
-| Hash | `3ee4533` |
-| Message | WIP: add Rivhit contact autofill and communication messages |
-| Date | 2026-06-17 |
+| Hash | `edb4fd2` |
+| Message | fix: use business days for Today Follow-Up grace period |
+| Date | 2026-06-22 |
 | Build | Clean |
 | Lint | Clean |
 
@@ -259,10 +262,9 @@ See [COMMERCIAL_PLAN.md](./COMMERCIAL_PLAN.md) for full detail.
 
 ## 13. Immediate Next Actions
 
-1. **Fix contact carry-over bug** — contacts not persisting correctly across report imports in some scenarios
-2. **Implement Net +30 overdue calculation** — update `ageDays` logic to use due date = documentDate + 30d
-3. **Landing screen redesign** — two first-class import options (Excel upload and Rivhit API token)
-4. **Validate communication flows** — test WhatsApp and email drafts end-to-end with real data
-5. **Plan WhatsApp automation** — define architecture before implementation
+1. **Validate communication flows** — end-to-end test WhatsApp and email drafts with real customer data; verify activity log entries, document selection in message body
+2. **Plan WhatsApp automation** — define architecture before writing any code; identify WhatsApp Business API requirements
+3. **Export / print view** — summary report of current collections workspace for offline use
+4. **Cloud deployment** — Vercel or equivalent; HTTPS; per-business data isolation plan
 
 Cross-reference: [NEXT_ACTIONS.md](./NEXT_ACTIONS.md)
