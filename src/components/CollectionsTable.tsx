@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { RivhitRow } from "@/lib/parseRivhit";
 import { docStatusKey, computeDueDate, CREDIT_INVOICE_TYPE } from "@/lib/parseRivhit";
@@ -15,8 +15,19 @@ import { CustomerPanel } from "@/components/CustomerPanel";
 import { DocumentPreviewModal, EyeIcon } from "@/components/DocumentPreviewModal";
 import type { ImportSource, SyncStats } from "@/components/AppShell";
 
-// Computed once at module load — stable for the entire browser session.
-const TODAY_STR = todayDateStr();
+// Refreshes today's date string when the browser tab becomes visible after
+// being hidden (handles the overnight open-tab scenario).
+function useTodayStr(): string {
+  const [todayStr, setTodayStr] = useState(todayDateStr);
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") setTodayStr(todayDateStr());
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+  return todayStr;
+}
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
@@ -100,7 +111,7 @@ type SortColumn =
 
 type SortDir = "asc" | "desc";
 
-type ActiveFilter = "all" | "yellow" | "red";
+type ActiveFilter = "all" | "fresh" | "yellow" | "red";
 type StatusFilter = CollectionStatus | "all";
 
 const INITIAL_DIR: Record<SortColumn, SortDir> = {
@@ -230,6 +241,7 @@ export function CollectionsTable({
   const [approachingFilter,    setApproachingFilter]    = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ documentType: string; documentNumber: number } | null>(null);
 
+  const todayStr     = useTodayStr();
   const closePanel   = useCallback(() => setSelectedRow(null), []);
   const closePreview = useCallback(() => setPreviewDoc(null),  []);
 
@@ -288,7 +300,7 @@ export function CollectionsTable({
     let todayFollowUpCount = 0;
     for (const r of enriched) {
       const docSt = statuses[docStatusKey(r)];
-      if (isTodayFollowUp(docSt, TODAY_STR)) todayFollowUpCount++;
+      if (isTodayFollowUp(docSt, todayStr)) todayFollowUpCount++;
       if (docSt?.status !== "שולם") totalBalance += r.remainingBalance;
     }
 
@@ -319,7 +331,7 @@ export function CollectionsTable({
       todayFollowUpCount,
       approachingCustomerCount: approachingCustomerSet.size,
     };
-  }, [enriched, tableRows, statuses]);
+  }, [enriched, tableRows, statuses, todayStr]);
 
   // 1. Band filter — "שולם" docs are excluded when a specific band is active
   const bandFiltered: EnrichedRow[] = useMemo(() => {
@@ -345,8 +357,8 @@ export function CollectionsTable({
   // 3. "לטיפול היום" filter — AND-logic with band + status filters
   const followUpFiltered: EnrichedRow[] = useMemo(() => {
     if (!todayFollowUpFilter) return statusFiltered;
-    return statusFiltered.filter((r) => isTodayFollowUp(statuses[docStatusKey(r)], TODAY_STR));
-  }, [statusFiltered, todayFollowUpFilter, statuses]);
+    return statusFiltered.filter((r) => isTodayFollowUp(statuses[docStatusKey(r)], todayStr));
+  }, [statusFiltered, todayFollowUpFilter, statuses, todayStr]);
 
   // 4. "לקראת חריגה" filter — AND-logic with upstream filters
   const approachingFiltered: EnrichedRow[] = useMemo(() => {
@@ -499,8 +511,8 @@ export function CollectionsTable({
             value={fmtCurrency(summary.balanceFresh)}
             count={summary.countFresh}
             variant="neutral"
-            isActive={false}
-            onClick={() => setActiveFilter("all")}
+            isActive={activeFilter === "fresh"}
+            onClick={() => handleFilterClick("fresh")}
           />
         </div>
       </section>
@@ -523,10 +535,14 @@ export function CollectionsTable({
                 className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                   activeFilter === "red"
                     ? "bg-red-100 text-red-800"
-                    : "bg-amber-100 text-amber-800"
+                    : activeFilter === "yellow"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-gray-100 text-gray-700"
                 }`}
               >
-                <span>{activeFilter === "red" ? "60+ יום" : "30–60 יום"}</span>
+                <span>
+                  {activeFilter === "red" ? "60+ יום" : activeFilter === "yellow" ? "30–60 יום" : "טרם לטיפול"}
+                </span>
                 <button
                   type="button"
                   onClick={() => setActiveFilter("all")}

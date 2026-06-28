@@ -12,8 +12,19 @@ import { APPROACHING_WINDOW_DAYS } from "@/lib/approaching";
 import { EyeIcon } from "@/components/DocumentPreviewModal";
 import { DOC_TYPE_NUM } from "@/lib/parseRivhitApi";
 
-// Computed once at module load — stable for the entire browser session.
-const TODAY_STR = todayDateStr();
+// Refreshes today's date string when the browser tab becomes visible after
+// being hidden (handles the overnight open-tab scenario).
+function useTodayStr(): string {
+  const [todayStr, setTodayStr] = useState(todayDateStr);
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") setTodayStr(todayDateStr());
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+  return todayStr;
+}
 
 // ── Invisible-character sanitizer ────────────────────────────────────────────
 // Rivhit embeds RTL marks and zero-width chars in strings. trim() misses them
@@ -215,6 +226,7 @@ function buildPreDueWhatsAppMessage(
   customerName: string,
   rows: EnrichedRow[],
   links: Map<string, string>,
+  hasCreditInvoices: boolean,
 ): string {
   const sorted = [...rows].sort((a, b) => a.daysUntilDue - b.daysUntilDue);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
@@ -235,6 +247,10 @@ function buildPreDueWhatsAppMessage(
     ``,
     `סכום כולל לתשלום: ${fmtCurrency(total)}`,
     ``,
+    ...(hasCreditInvoices ? [
+      `לתשומת לב: בכרטיס הלקוח קיימים זיכויים/קיזוזים שעשויים להשפיע על היתרה הסופית.`,
+      ``,
+    ] : []),
     `נשמח לקבל את התשלום עד המועד ולאישור ההעברה.`,
     ``,
     `תודה,`,
@@ -247,6 +263,7 @@ function buildPreDueEmailUrl(
   customerName: string,
   rows: EnrichedRow[],
   links: Map<string, string>,
+  hasCreditInvoices: boolean,
 ): string {
   const sorted = [...rows].sort((a, b) => a.daysUntilDue - b.daysUntilDue);
   const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
@@ -267,6 +284,10 @@ function buildPreDueEmailUrl(
     ``,
     `סכום כולל לתשלום: ${fmtCurrency(total)}`,
     ``,
+    ...(hasCreditInvoices ? [
+      `לתשומת לב: בכרטיס הלקוח קיימים זיכויים/קיזוזים שעשויים להשפיע על היתרה הסופית.`,
+      ``,
+    ] : []),
     `נבקשך לסדר את ההעברה עד למועד הפירעון ולשלוח אלינו אישור.`,
     `לכל שאלה אנא פנה אלינו.`,
     ``,
@@ -334,6 +355,8 @@ export function CustomerPanel({
   onAddActivity,
   onPreview,
 }: CustomerPanelProps) {
+  const todayStr = useTodayStr();
+
   // Close on Escape
   useEffect(() => {
     if (!clickedRow) return;
@@ -469,6 +492,7 @@ export function CustomerPanel({
                   onSaveExpectedDate={onSaveExpectedDate}
                   onPreview={onPreview}
                   onAddActivity={onAddActivity}
+                  todayStr={todayStr}
                 />
               ))}
             </div>
@@ -722,7 +746,7 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     setBusy(true);
     const links = await fetchLinks();
     const msg = isPreDueContext
-      ? buildPreDueWhatsAppMessage(customerName, selectedRows, links)
+      ? buildPreDueWhatsAppMessage(customerName, selectedRows, links, hasCreditInvoices)
       : buildWhatsAppMessage(customerName, selectedRows, links, hasCreditInvoices);
     window.open(`https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
     onAddActivity(
@@ -738,7 +762,7 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     setBusy(true);
     const links = await fetchLinks();
     window.location.href = isPreDueContext
-      ? buildPreDueEmailUrl(email, customerName, selectedRows, links)
+      ? buildPreDueEmailUrl(email, customerName, selectedRows, links, hasCreditInvoices)
       : buildEmailUrl(email, customerName, selectedRows, links, hasCreditInvoices);
     onAddActivity(
       customerName,
@@ -864,9 +888,10 @@ interface DocCardProps {
   onSaveExpectedDate: (docKey: string, date: string | undefined) => void;
   onPreview:          (documentType: string, documentNumber: number) => void;
   onAddActivity:      (customerName: string, type: ActivityType, text: string) => void;
+  todayStr:           string;
 }
 
-function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate, onPreview, onAddActivity }: DocCardProps) {
+function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate, onPreview, onAddActivity, todayStr }: DocCardProps) {
   const [statusOpen,      setStatusOpen]      = useState(false);
   const [disputeNoteMode, setDisputeNoteMode] = useState(false);
   const [disputeNote,     setDisputeNote]     = useState("");
@@ -875,7 +900,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
   const effectiveStatus: CollectionStatus = docStatus?.status ?? "לא טופל";
   const isPaid      = effectiveStatus === "שולם";
   const isDisputed  = effectiveStatus === "במחלוקת";
-  const isFollowUp  = isTodayFollowUp(docStatus, TODAY_STR);
+  const isFollowUp  = isTodayFollowUp(docStatus, todayStr);
   const statusKey   = docStatusKey(doc);
 
   const cardBg =

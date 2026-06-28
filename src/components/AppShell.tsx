@@ -61,8 +61,11 @@ function readReport(): StoredReport | null {
     return JSON.parse(raw) as StoredReport;
   } catch { return null; }
 }
-function writeReport(report: StoredReport): void {
-  localStorage.setItem(REPORT_KEY, JSON.stringify(report));
+function writeReport(report: StoredReport): boolean {
+  try {
+    localStorage.setItem(REPORT_KEY, JSON.stringify(report));
+    return true;
+  } catch { return false; }
 }
 
 function readContacts(): ContactMap {
@@ -72,12 +75,18 @@ function readContacts(): ContactMap {
     return JSON.parse(raw) as ContactMap;
   } catch { return {}; }
 }
-function writeContacts(contacts: ContactMap): void {
-  localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+function writeContacts(contacts: ContactMap): boolean {
+  try {
+    localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+    return true;
+  } catch { return false; }
 }
 
-function writeStatuses(statuses: StatusMap): void {
-  localStorage.setItem(STATUSES_KEY, JSON.stringify(statuses));
+function writeStatuses(statuses: StatusMap): boolean {
+  try {
+    localStorage.setItem(STATUSES_KEY, JSON.stringify(statuses));
+    return true;
+  } catch { return false; }
 }
 
 function readStatuses(): StatusMap {
@@ -145,8 +154,11 @@ function readActivity(): ActivityLog {
     return JSON.parse(raw) as ActivityLog;
   } catch { return {}; }
 }
-function writeActivity(log: ActivityLog): void {
-  localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log));
+function writeActivity(log: ActivityLog): boolean {
+  try {
+    localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log));
+    return true;
+  } catch { return false; }
 }
 
 function readToken(): string {
@@ -165,6 +177,7 @@ export function AppShell() {
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncStats, setSyncStats] = useState<SyncStats | null>(null);
+  const [ioError,   setIoError]   = useState<string | null>(null);
 
   useEffect(() => {
     const stored      = readReport();
@@ -188,9 +201,12 @@ export function AppShell() {
     });
   }, []);
 
-  function handleImport(rows: RivhitRow[], source: ImportSource = "excel") {
+  function handleImport(rows: RivhitRow[], source: ImportSource = "excel"): boolean {
     const importedAt = Date.now();
-    writeReport({ importedAt, rows, importSource: source });
+    if (!writeReport({ importedAt, rows, importSource: source })) {
+      setIoError("נכשלה שמירת הנתונים — נפח האחסון מלא");
+      return false;
+    }
     // Contacts, statuses, and activity are NEVER overwritten on import
     const contacts    = readContacts();
     const statuses    = readStatuses();
@@ -198,6 +214,7 @@ export function AppShell() {
     startTransition(() =>
       setState({ mode: "workspace", rows, importedAt, importSource: source, contacts, statuses, activityLog }),
     );
+    return true;
   }
 
   async function handleApiSync() {
@@ -225,11 +242,6 @@ export function AppShell() {
       if (rows === null) {
         setSyncState("error");
         setSyncError(extractApiError(docData));
-        return;
-      }
-      if (rows.length === 0) {
-        setSyncState("error");
-        setSyncError("ה-API לא החזיר מסמכים פתוחים");
         return;
       }
 
@@ -278,13 +290,15 @@ export function AppShell() {
         }
 
         // Write merged contacts BEFORE handleImport so it reads them back
-        if (contactsWritten > 0) writeContacts(merged);
+        if (contactsWritten > 0 && !writeContacts(merged)) {
+          contactSyncFailed = true;
+        }
       } catch {
         contactSyncFailed = true;
       }
 
       // ── Step 6: Import documents (reads freshly merged contacts) ────────
-      handleImport(rows, "api");
+      if (!handleImport(rows, "api")) return; // storage full — ioError already set
       const stats: SyncStats = { documents: rows.length, contactsWritten, contactSyncFailed };
       setSyncStats(stats);
       setSyncState("success");
@@ -325,7 +339,7 @@ export function AppShell() {
   function handleSaveContact(customerName: string, contact: CustomerContact) {
     if (state.mode !== "workspace") return;
     const contacts: ContactMap = { ...state.contacts, [customerName]: contact };
-    writeContacts(contacts);
+    if (!writeContacts(contacts)) { setIoError("נכשלה שמירת פרטי הקשר — נפח האחסון מלא"); return; }
     setState({ ...state, contacts });
   }
 
@@ -339,10 +353,13 @@ export function AppShell() {
     const newEntry: DocumentStatus = {
       status,
       updatedAt: Date.now(),
-      ...(prevEntry?.expectedPaymentDate ? { expectedPaymentDate: prevEntry.expectedPaymentDate } : {}),
+      // B5: only carry expectedPaymentDate forward when staying on "מועמד לתשלום"
+      ...(status === "מועמד לתשלום" && prevEntry?.expectedPaymentDate
+        ? { expectedPaymentDate: prevEntry.expectedPaymentDate }
+        : {}),
     };
     const statuses: StatusMap = { ...state.statuses, [docKey]: newEntry };
-    writeStatuses(statuses);
+    if (!writeStatuses(statuses)) { setIoError("נכשלה שמירת הסטטוס — נפח האחסון מלא"); return; }
 
     let activityLog = state.activityLog;
     if (prevStatus !== status) {
@@ -363,7 +380,7 @@ export function AppShell() {
       };
       const existing = activityLog[customerName] ?? [];
       activityLog = { ...activityLog, [customerName]: [...existing, entry] };
-      writeActivity(activityLog);
+      if (!writeActivity(activityLog)) setIoError("נכשלה שמירת יומן הפעילות — נפח האחסון מלא");
     }
 
     setState({ ...state, statuses, activityLog });
@@ -376,7 +393,7 @@ export function AppShell() {
       ? { ...existing, expectedPaymentDate: date }
       : { status: existing.status, updatedAt: existing.updatedAt };
     const statuses: StatusMap = { ...state.statuses, [docKey]: newEntry };
-    writeStatuses(statuses);
+    if (!writeStatuses(statuses)) { setIoError("נכשלה שמירת תאריך התשלום — נפח האחסון מלא"); return; }
     setState({ ...state, statuses });
   }
 
@@ -385,41 +402,61 @@ export function AppShell() {
     const entry: ActivityEntry = { id: crypto.randomUUID(), type, text, createdAt: Date.now() };
     const existing = state.activityLog[customerName] ?? [];
     const activityLog: ActivityLog = { ...state.activityLog, [customerName]: [...existing, entry] };
-    writeActivity(activityLog);
+    if (!writeActivity(activityLog)) { setIoError("נכשלה שמירת יומן הפעילות — נפח האחסון מלא"); return; }
     setState({ ...state, activityLog });
   }
 
   if (state.mode === "loading") return null;
 
+  const storageErrorBanner = ioError !== null && (
+    <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-4 bg-red-600 px-6 py-2.5 text-sm text-white shadow-lg">
+      <span>⚠ {ioError}</span>
+      <button
+        type="button"
+        onClick={() => setIoError(null)}
+        aria-label="סגור"
+        className="shrink-0 opacity-80 hover:opacity-100"
+      >
+        ✕
+      </button>
+    </div>
+  );
+
   if (state.mode === "upload") {
     return (
-      <UploadForm
-        onImport={handleImport}
-        onApiSync={() => { void handleApiSync(); }}
-        syncState={syncState}
-        syncError={syncError}
-        {...(state.canCancel ? { onCancel: handleCancelUpload } : {})}
-      />
+      <>
+        {storageErrorBanner}
+        <UploadForm
+          onImport={handleImport}
+          onApiSync={() => { void handleApiSync(); }}
+          syncState={syncState}
+          syncError={syncError}
+          {...(state.canCancel ? { onCancel: handleCancelUpload } : {})}
+        />
+      </>
     );
   }
 
   return (
-    <CollectionsTable
-      rows={state.rows}
-      importedAt={state.importedAt}
-      importSource={state.importSource}
-      onNewImport={handleRequestNewImport}
-      onApiSync={() => { void handleApiSync(); }}
-      syncState={syncState}
-      syncError={syncError}
-      syncStats={syncStats}
-      contacts={state.contacts}
-      onSaveContact={handleSaveContact}
-      statuses={state.statuses}
-      onSaveStatus={handleSaveStatus}
-      onSaveExpectedDate={handleSaveExpectedDate}
-      activityLog={state.activityLog}
-      onAddActivity={handleAddActivity}
-    />
+    <>
+      {storageErrorBanner}
+      <CollectionsTable
+        rows={state.rows}
+        importedAt={state.importedAt}
+        importSource={state.importSource}
+        onNewImport={handleRequestNewImport}
+        onApiSync={() => { void handleApiSync(); }}
+        syncState={syncState}
+        syncError={syncError}
+        syncStats={syncStats}
+        contacts={state.contacts}
+        onSaveContact={handleSaveContact}
+        statuses={state.statuses}
+        onSaveStatus={handleSaveStatus}
+        onSaveExpectedDate={handleSaveExpectedDate}
+        activityLog={state.activityLog}
+        onAddActivity={handleAddActivity}
+      />
+    </>
   );
 }
