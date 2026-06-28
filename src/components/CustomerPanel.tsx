@@ -8,6 +8,7 @@ import type { CollectionStatus, DocumentStatus, StatusMap } from "@/types/status
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityEntry, ActivityType } from "@/types/activity";
 import { isTodayFollowUp, todayDateStr } from "@/lib/followUp";
+import { APPROACHING_WINDOW_DAYS } from "@/lib/approaching";
 import { EyeIcon } from "@/components/DocumentPreviewModal";
 import { DOC_TYPE_NUM } from "@/lib/parseRivhitApi";
 
@@ -196,6 +197,78 @@ function buildEmailUrl(email: string, customerName: string, rows: EnrichedRow[],
     ] : []),
     `נבקשך לסדר את התשלום בהקדם האפשרי.`,
     `לפרטים נוספים אנא צור עמנו קשר.`,
+    ``,
+    `בכבוד רב,`,
+    `PURE WATER ISRAEL`,
+  ].join("\n");
+  const safeEmail = email.replace(STRIP_INVIS, "").trim();
+  return `mailto:${safeEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+// ── Pre-due reminder message builders ───────────────────────────────────────
+
+function fmtDueDate(documentDateMs: number): string {
+  return new Date(computeDueDate(documentDateMs)).toLocaleDateString("he-IL");
+}
+
+function buildPreDueWhatsAppMessage(
+  customerName: string,
+  rows: EnrichedRow[],
+  links: Map<string, string>,
+): string {
+  const sorted = [...rows].sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
+  const docLines = sorted.flatMap((r) => {
+    const dueDateStr = r.documentDateMs > 0 ? fmtDueDate(r.documentDateMs) : "";
+    const line = `• ${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} — פרעון: ${dueDateStr}`;
+    const link = links.get(docKey(r));
+    return link !== undefined ? [line, `  🔗 ${link}`] : [line];
+  });
+  return [
+    `שלום ${customerName},`,
+    ``,
+    `תזכורת ידידותית לפני המועד הקרוב:`,
+    ``,
+    `לפי הרישום אצלנו, המסמכים הבאים צפויים לפירעון בקרוב:`,
+    ``,
+    ...docLines,
+    ``,
+    `סכום כולל לתשלום: ${fmtCurrency(total)}`,
+    ``,
+    `נשמח לקבל את התשלום עד המועד ולאישור ההעברה.`,
+    ``,
+    `תודה,`,
+    `PURE WATER ISRAEL`,
+  ].join("\n");
+}
+
+function buildPreDueEmailUrl(
+  email: string,
+  customerName: string,
+  rows: EnrichedRow[],
+  links: Map<string, string>,
+): string {
+  const sorted = [...rows].sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  const total  = rows.reduce((s, r) => s + r.remainingBalance, 0);
+  const docLines = sorted.flatMap((r) => {
+    const dueDateStr = r.documentDateMs > 0 ? fmtDueDate(r.documentDateMs) : "";
+    const line = `${r.documentType} ${r.documentNumber} — ${fmtCurrency(r.remainingBalance)} — תאריך מסמך: ${r.documentDate} — פרעון: ${dueDateStr}`;
+    const link = links.get(docKey(r));
+    return link !== undefined ? [line, `  🔗 ${link}`] : [line];
+  });
+  const subject = `תזכורת תשלום לפני המועד — ${customerName}`;
+  const body = [
+    `שלום ${customerName},`,
+    ``,
+    `ברצוננו להזכירך בצורה ידידותית על מועדי הפירעון הקרובים:`,
+    ``,
+    `פירוט מסמכים:`,
+    ...docLines,
+    ``,
+    `סכום כולל לתשלום: ${fmtCurrency(total)}`,
+    ``,
+    `נבקשך לסדר את ההעברה עד למועד הפירעון ולשלוח אלינו אישור.`,
+    `לכל שאלה אנא פנה אלינו.`,
     ``,
     `בכבוד רב,`,
     `PURE WATER ISRAEL`,
@@ -627,6 +700,12 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
   const waDisabled = !phone || noSelected || busy;
   const emDisabled = !email || noSelected || busy;
 
+  // Use the polite pre-due reminder template when every selected document
+  // is within the approaching window and not yet overdue.
+  const isPreDueContext =
+    selectedRows.length > 0 &&
+    selectedRows.every((r) => r.daysUntilDue >= 0 && r.daysUntilDue <= APPROACHING_WINDOW_DAYS);
+
   async function fetchLinks(): Promise<Map<string, string>> {
     const token = readToken();
     if (!token) {
@@ -642,9 +721,15 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     if (!phone || noSelected) return;
     setBusy(true);
     const links = await fetchLinks();
-    const msg = buildWhatsAppMessage(customerName, selectedRows, links, hasCreditInvoices);
+    const msg = isPreDueContext
+      ? buildPreDueWhatsAppMessage(customerName, selectedRows, links)
+      : buildWhatsAppMessage(customerName, selectedRows, links, hasCreditInvoices);
     window.open(`https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
-    onAddActivity(customerName, "whatsapp_opened", "טיוטת WhatsApp נפתחה");
+    onAddActivity(
+      customerName,
+      "whatsapp_opened",
+      isPreDueContext ? "תזכורת לפני פירעון — טיוטת WhatsApp נפתחה" : "טיוטת WhatsApp נפתחה",
+    );
     setBusy(false);
   }
 
@@ -652,8 +737,14 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     if (!email || noSelected) return;
     setBusy(true);
     const links = await fetchLinks();
-    window.location.href = buildEmailUrl(email, customerName, selectedRows, links, hasCreditInvoices);
-    onAddActivity(customerName, "email_opened", "טיוטת אימייל נפתחה");
+    window.location.href = isPreDueContext
+      ? buildPreDueEmailUrl(email, customerName, selectedRows, links)
+      : buildEmailUrl(email, customerName, selectedRows, links, hasCreditInvoices);
+    onAddActivity(
+      customerName,
+      "email_opened",
+      isPreDueContext ? "תזכורת לפני פירעון — טיוטת אימייל נפתחה" : "טיוטת אימייל נפתחה",
+    );
     setBusy(false);
   }
 

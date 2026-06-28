@@ -10,6 +10,7 @@ import type { CollectionStatus, StatusMap } from "@/types/status";
 import { ALL_STATUSES } from "@/types/status";
 import type { ActivityLog, ActivityEntry, ActivityType } from "@/types/activity";
 import { isTodayFollowUp, todayDateStr } from "@/lib/followUp";
+import { isApproachingDue } from "@/lib/approaching";
 import { CustomerPanel } from "@/components/CustomerPanel";
 import { DocumentPreviewModal, EyeIcon } from "@/components/DocumentPreviewModal";
 import type { ImportSource, SyncStats } from "@/components/AppShell";
@@ -226,6 +227,7 @@ export function CollectionsTable({
   const [activeFilter,         setActiveFilter]         = useState<ActiveFilter>("all");
   const [activeStatusFilter,   setActiveStatusFilter]   = useState<StatusFilter>("all");
   const [todayFollowUpFilter,  setTodayFollowUpFilter]  = useState(false);
+  const [approachingFilter,    setApproachingFilter]    = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ documentType: string; documentNumber: number } | null>(null);
 
   const closePanel   = useCallback(() => setSelectedRow(null), []);
@@ -254,7 +256,10 @@ export function CollectionsTable({
     () =>
       rows.map((r) => {
         const ageDays = computeAgeDays(r.documentDateMs);
-        return { ...r, ageDays, band: toBand(ageDays) };
+        const daysUntilDue = r.documentDateMs > 0
+          ? Math.floor((computeDueDate(r.documentDateMs) - Date.now()) / 86_400_000)
+          : -9999;
+        return { ...r, ageDays, band: toBand(ageDays), daysUntilDue };
       }),
     [rows]
   );
@@ -287,12 +292,15 @@ export function CollectionsTable({
       if (docSt?.status !== "שולם") totalBalance += r.remainingBalance;
     }
 
-    // Pass 2: band KPIs and queue counts from actionable rows only
+    // Pass 2: band KPIs, queue counts, and approaching-overdue customers
     let balanceFresh  = 0, balance30to60 = 0, balance60plus = 0;
     let countFresh    = 0, count30to60   = 0, count60plus   = 0;
     let paidCount     = 0;
+    const approachingCustomerSet = new Set<string>();
     for (const r of tableRows) {
-      const st = statuses[docStatusKey(r)]?.status;
+      const docSt = statuses[docStatusKey(r)];
+      if (isApproachingDue(r, docSt)) approachingCustomerSet.add(r.customerName);
+      const st = docSt?.status;
       if (st === "שולם") { paidCount++; continue; }
       if (r.band === "fresh")  { balanceFresh  += r.remainingBalance; countFresh++;  }
       if (r.band === "yellow") { balance30to60 += r.remainingBalance; count30to60++; }
@@ -309,6 +317,7 @@ export function CollectionsTable({
       balance30to60, count30to60,
       balance60plus, count60plus,
       todayFollowUpCount,
+      approachingCustomerCount: approachingCustomerSet.size,
     };
   }, [enriched, tableRows, statuses]);
 
@@ -339,11 +348,17 @@ export function CollectionsTable({
     return statusFiltered.filter((r) => isTodayFollowUp(statuses[docStatusKey(r)], TODAY_STR));
   }, [statusFiltered, todayFollowUpFilter, statuses]);
 
-  // 4. Search filter
+  // 4. "לקראת חריגה" filter — AND-logic with upstream filters
+  const approachingFiltered: EnrichedRow[] = useMemo(() => {
+    if (!approachingFilter) return followUpFiltered;
+    return followUpFiltered.filter((r) => isApproachingDue(r, statuses[docStatusKey(r)]));
+  }, [followUpFiltered, approachingFilter, statuses]);
+
+  // 5. Search filter
   const filtered: EnrichedRow[] = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return followUpFiltered;
-    return followUpFiltered.filter(
+    if (!q) return approachingFiltered;
+    return approachingFiltered.filter(
       (r) =>
         r.customerName.toLowerCase().includes(q) ||
         String(r.documentNumber).includes(q) ||
@@ -373,7 +388,7 @@ export function CollectionsTable({
   const customerActivity: ActivityEntry[] =
     selectedRow !== null ? (activityLog[selectedRow.customerName] ?? []) : [];
 
-  const filtersActive = activeFilter !== "all" || activeStatusFilter !== "all" || todayFollowUpFilter;
+  const filtersActive = activeFilter !== "all" || activeStatusFilter !== "all" || todayFollowUpFilter || approachingFilter;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
@@ -530,7 +545,7 @@ export function CollectionsTable({
             {filtersActive && (
               <button
                 type="button"
-                onClick={() => { setActiveFilter("all"); setActiveStatusFilter("all"); setTodayFollowUpFilter(false); }}
+                onClick={() => { setActiveFilter("all"); setActiveStatusFilter("all"); setTodayFollowUpFilter(false); setApproachingFilter(false); }}
                 className="mr-2 text-xs text-blue-600 hover:text-blue-800"
               >
                 נקה הכל
@@ -569,6 +584,22 @@ export function CollectionsTable({
                 }`}
               >
                 לטיפול היום ({summary.todayFollowUpCount})
+              </button>
+            </>
+          )}
+          {(summary.approachingCustomerCount > 0 || approachingFilter) && (
+            <>
+              <span className="text-gray-300">|</span>
+              <button
+                type="button"
+                onClick={() => setApproachingFilter((v) => !v)}
+                className={`rounded-full px-3 py-0.5 text-xs font-semibold transition-colors ${
+                  approachingFilter
+                    ? "bg-indigo-600 text-white"
+                    : "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-300 hover:bg-indigo-100"
+                }`}
+              >
+                לקראת חריגה ({summary.approachingCustomerCount} לקוחות)
               </button>
             </>
           )}
