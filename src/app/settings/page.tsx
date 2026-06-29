@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const APP_VERSION   = "0.1.0";
-const REPORT_KEY    = "pure-collections:report";
-const SETTINGS_KEY  = "pure-collections:settings";
+const APP_VERSION    = "0.1.0";
+const REPORT_KEY     = "pure-collections:report";
+const SETTINGS_KEY   = "pure-collections:settings";
+const CONTACTS_KEY   = "pure-collections:contacts";
+const STATUSES_KEY   = "pure-collections:status";
+const ACTIVITY_KEY   = "pure-collections:activity";
 
 // ── Persistence helpers ──────────────────────────────────────────────────────
 
@@ -32,6 +35,43 @@ function clearLocalToken(): void {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(cur));
     }
   } catch {}
+}
+
+interface MigrationCounts { contacts: number; statuses: number; activity: number }
+
+function readLocalCounts(): MigrationCounts {
+  try {
+    const contacts  = Object.keys((JSON.parse(localStorage.getItem(CONTACTS_KEY) ?? "{}") as Record<string, unknown>)).length;
+    const statuses  = Object.keys((JSON.parse(localStorage.getItem(STATUSES_KEY) ?? "{}") as Record<string, unknown>)).length;
+    const actLog    = JSON.parse(localStorage.getItem(ACTIVITY_KEY) ?? "{}") as Record<string, unknown[]>;
+    const activity  = Object.values(actLog).reduce((sum, arr) => sum + arr.length, 0);
+    return { contacts, statuses, activity };
+  } catch { return { contacts: 0, statuses: 0, activity: 0 }; }
+}
+
+function readLocalPayload(): object {
+  try {
+    const contacts = JSON.parse(localStorage.getItem(CONTACTS_KEY) ?? "{}") as object;
+    const statuses = JSON.parse(localStorage.getItem(STATUSES_KEY) ?? "{}") as object;
+    const activity = JSON.parse(localStorage.getItem(ACTIVITY_KEY) ?? "{}") as object;
+    return { contacts, statuses, activity };
+  } catch { return { contacts: {}, statuses: {}, activity: {} }; }
+}
+
+async function runBulkMigration(): Promise<{ ok: true; migrated: MigrationCounts } | { ok: false; error: string }> {
+  try {
+    const payload = readLocalPayload();
+    const res  = await fetch("/api/migrate/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json()) as { ok: boolean; migrated?: MigrationCounts; error?: string };
+    if (!res.ok || !data.ok) return { ok: false, error: data.error ?? "שגיאה לא ידועה" };
+    return { ok: true, migrated: data.migrated ?? { contacts: 0, statuses: 0, activity: 0 } };
+  } catch {
+    return { ok: false, error: "שגיאת רשת" };
+  }
 }
 
 function readSystemInfo() {
@@ -92,6 +132,12 @@ interface RivhitResponse {
 
 // ── Settings page ────────────────────────────────────────────────────────────
 
+type MigrateState =
+  | { kind: "idle" }
+  | { kind: "running" }
+  | { kind: "done"; migrated: MigrationCounts }
+  | { kind: "error"; message: string };
+
 export default function SettingsPage() {
   const [vaultHint,      setVaultHint]      = useState<string | null>(null);
   const [hasLocalToken,  setHasLocalToken]  = useState(false);
@@ -100,6 +146,8 @@ export default function SettingsPage() {
   const [saveError,      setSaveError]      = useState<string | null>(null);
   const [savedOk,        setSavedOk]        = useState(false);
   const [testResult,     setTestResult]     = useState<TestResult>({ kind: "idle" });
+  const [localCounts,    setLocalCounts]    = useState<MigrationCounts>({ contacts: 0, statuses: 0, activity: 0 });
+  const [migrateState,   setMigrateState]   = useState<MigrateState>({ kind: "idle" });
   const [sysInfo]                           = useState(
     () => typeof window !== "undefined" ? readSystemInfo() : { importedAt: null, importSource: null }
   );
@@ -108,6 +156,7 @@ export default function SettingsPage() {
     if (typeof window === "undefined") return;
     void fetchVaultHint().then(setVaultHint);
     setHasLocalToken(readLocalToken() !== "");
+    setLocalCounts(readLocalCounts());
   }, []);
 
   async function handleSave() {
@@ -149,6 +198,16 @@ export default function SettingsPage() {
       }
     } catch {
       setTestResult({ kind: "error", message: "שגיאת רשת" });
+    }
+  }
+
+  async function handleMigrate() {
+    setMigrateState({ kind: "running" });
+    const result = await runBulkMigration();
+    if (result.ok) {
+      setMigrateState({ kind: "done", migrated: result.migrated });
+    } else {
+      setMigrateState({ kind: "error", message: result.error });
     }
   }
 
@@ -236,6 +295,50 @@ export default function SettingsPage() {
           {testResult.kind !== "idle" && testResult.kind !== "loading" && (
             <ConnectionResult result={testResult} />
           )}
+        </section>
+
+        {/* ── Data migration ─────────────────────────────────────────────── */}
+        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-1 text-base font-semibold text-gray-700">סנכרון נתונים לענן</h2>
+          <p className="mb-4 text-sm text-gray-500">
+            מעלה נתוני אנשי קשר, סטטוסים ויומן פעילות מהאחסון המקומי של הדפדפן לענן.
+            הפעולה בטוחה — ניתן לבצע אותה מספר פעמים ולא ייווצרו כפילויות.
+            הנתונים המקומיים לא נמחקים.
+          </p>
+
+          <div className="mb-4 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            <span className="font-medium">נמצא באחסון המקומי: </span>
+            {localCounts.contacts} אנשי קשר,&nbsp;
+            {localCounts.statuses} סטטוסים,&nbsp;
+            {localCounts.activity} רשומות יומן
+          </div>
+
+          {migrateState.kind === "done" && (
+            <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+              ✓ הסנכרון הושלם — עודכנו {migrateState.migrated.contacts} אנשי קשר,&nbsp;
+              {migrateState.migrated.statuses} סטטוסים,&nbsp;
+              {migrateState.migrated.activity} רשומות יומן
+            </div>
+          )}
+
+          {migrateState.kind === "error" && (
+            <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              ⚠️ הסנכרון נכשל — הנתונים המקומיים שמורים. ניתן לנסות שוב.
+              <br />
+              <span className="text-xs opacity-75">{migrateState.message}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => { void handleMigrate(); }}
+            disabled={migrateState.kind === "running"}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {migrateState.kind === "running" ? "מסנכרן…" :
+             migrateState.kind === "done"    ? "סנכרן שוב" :
+             "סנכרן לענן"}
+          </button>
         </section>
 
         {/* ── System information ─────────────────────────────────────────── */}
