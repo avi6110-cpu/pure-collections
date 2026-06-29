@@ -16,6 +16,11 @@ import {
 } from "@/lib/parseRivhitApi";
 import type { ApiContactFields } from "@/lib/parseRivhitApi";
 import type { AppUser } from "@/types/auth";
+import {
+  fetchCloudContacts,
+  upsertCloudContact,
+  upsertCloudContacts,
+} from "@/lib/supabase/contacts";
 
 const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
@@ -171,25 +176,36 @@ export function AppShell({ user }: { user: AppUser }) {
   const [ioError,   setIoError]   = useState<string | null>(null);
 
   useEffect(() => {
-    const stored      = readReport();
-    const contacts    = readContacts();
-    const statuses    = readStatuses();
-    const activityLog = readActivity();
-    startTransition(() => {
-      setState(
-        stored
-          ? {
-              mode:         "workspace",
-              rows:         stored.rows,
-              importedAt:   stored.importedAt,
-              importSource: stored.importSource ?? "excel",
-              contacts,
-              statuses,
-              activityLog,
-            }
-          : { mode: "upload", canCancel: false },
-      );
-    });
+    async function init() {
+      const stored      = readReport();
+      const statuses    = readStatuses();
+      const activityLog = readActivity();
+
+      // Cloud-first contacts with localStorage fallback
+      let contacts = readContacts();
+      const cloudContacts = await fetchCloudContacts();
+      if (cloudContacts !== null) {
+        contacts = cloudContacts;
+        writeContacts(contacts); // keep localStorage cache in sync
+      }
+
+      startTransition(() => {
+        setState(
+          stored
+            ? {
+                mode:         "workspace",
+                rows:         stored.rows,
+                importedAt:   stored.importedAt,
+                importSource: stored.importSource ?? "excel",
+                contacts,
+                statuses,
+                activityLog,
+              }
+            : { mode: "upload", canCancel: false },
+        );
+      });
+    }
+    void init();
   }, []);
 
   function handleImport(rows: RivhitRow[], source: ImportSource = "excel"): boolean {
@@ -255,6 +271,7 @@ export function AppShell({ user }: { user: AppUser }) {
         // ── Step 5: Merge into existing contacts (fill-blanks-only) ────────
         const existing = readContacts();
         const merged: ContactMap = { ...existing };
+        const cloudUpdates: ContactMap = {};
 
         for (const [name, apiFields] of contactsByName) {
           const cur = merged[name];
@@ -269,6 +286,7 @@ export function AppShell({ user }: { user: AppUser }) {
               ...(fillEmail ? { email: apiFields.email } : {}),
               updatedAt: Date.now(),
             };
+            cloudUpdates[name] = merged[name]!;
             contactsWritten++;
           }
         }
@@ -276,6 +294,12 @@ export function AppShell({ user }: { user: AppUser }) {
         // Write merged contacts BEFORE handleImport so it reads them back
         if (contactsWritten > 0 && !writeContacts(merged)) {
           contactSyncFailed = true;
+        }
+
+        // Cloud dual-write for newly filled contacts
+        if (Object.keys(cloudUpdates).length > 0) {
+          const cloudOk = await upsertCloudContacts(cloudUpdates, user.id, user.tenantId);
+          if (!cloudOk) contactSyncFailed = true;
         }
       } catch {
         contactSyncFailed = true;
@@ -325,6 +349,11 @@ export function AppShell({ user }: { user: AppUser }) {
     const contacts: ContactMap = { ...state.contacts, [customerName]: contact };
     if (!writeContacts(contacts)) { setIoError("נכשלה שמירת פרטי הקשר — נפח האחסון מלא"); return; }
     setState({ ...state, contacts });
+    // Cloud dual-write — non-blocking; localStorage write above is the source of truth on failure
+    void upsertCloudContact(customerName, contact, user.id, user.tenantId)
+      .then((ok) => {
+        if (!ok) setIoError("פרטי הקשר נשמרו מקומית — לא ניתן לשמור בענן כרגע");
+      });
   }
 
   // docKey format: `${customerName}|${documentType}|${documentNumber}`

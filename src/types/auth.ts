@@ -1,4 +1,6 @@
 export interface AppUser {
+  id:       string;  // auth.users UUID
+  tenantId: string;  // tenants.id
   email:    string;
   fullName: string;
   role:     "owner" | "manager" | "clerk";
