@@ -25,6 +25,10 @@ import {
   fetchCloudStatuses,
   upsertCloudStatus,
 } from "@/lib/supabase/statuses";
+import {
+  fetchCloudActivity,
+  insertCloudActivity,
+} from "@/lib/supabase/activity";
 
 const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
@@ -181,8 +185,7 @@ export function AppShell({ user }: { user: AppUser }) {
 
   useEffect(() => {
     async function init() {
-      const stored      = readReport();
-      const activityLog = readActivity();
+      const stored = readReport();
 
       // Cloud-first contacts with localStorage fallback
       let contacts = readContacts();
@@ -198,6 +201,14 @@ export function AppShell({ user }: { user: AppUser }) {
       if (cloudStatuses !== null) {
         statuses = cloudStatuses;
         writeStatuses(statuses); // keep localStorage cache in sync
+      }
+
+      // Cloud-first activity log with localStorage fallback
+      let activityLog = readActivity();
+      const cloudActivity = await fetchCloudActivity();
+      if (cloudActivity !== null) {
+        activityLog = cloudActivity;
+        writeActivity(activityLog); // keep localStorage cache in sync
       }
 
       startTransition(() => {
@@ -367,6 +378,27 @@ export function AppShell({ user }: { user: AppUser }) {
       });
   }
 
+  // Shared helper — creates an ActivityEntry, appends to localStorage, fires cloud insert.
+  // Returns { updatedLog, localOk } so callers can react to localStorage failures.
+  function saveActivity(
+    currentLog:   ActivityLog,
+    customerName: string,
+    type:         ActivityEntry["type"],
+    text:         string,
+    docStatusKey: string | null,
+  ): { updatedLog: ActivityLog; localOk: boolean } {
+    const entry: ActivityEntry = { id: crypto.randomUUID(), type, text, createdAt: Date.now() };
+    const existing = currentLog[customerName] ?? [];
+    const updatedLog: ActivityLog = { ...currentLog, [customerName]: [...existing, entry] };
+    const localOk = writeActivity(updatedLog);
+    if (!localOk) setIoError("נכשלה שמירת יומן הפעילות — נפח האחסון מלא");
+    void insertCloudActivity(customerName, entry, docStatusKey, user.id, user.tenantId)
+      .then((ok) => {
+        if (!ok) setIoError("יומן הפעילות נשמר מקומית — לא ניתן לשמור בענן כרגע");
+      });
+    return { updatedLog, localOk };
+  }
+
   // docKey format: `${customerName}|${documentType}|${documentNumber}`
   function handleSaveStatus(docKey: string, status: CollectionStatus) {
     if (state.mode !== "workspace") return;
@@ -392,24 +424,14 @@ export function AppShell({ user }: { user: AppUser }) {
 
     let activityLog = state.activityLog;
     if (prevStatus !== status) {
-      // Extract customer name and document label from the key
-      const firstPipe  = docKey.indexOf("|");
+      const firstPipe    = docKey.indexOf("|");
       const customerName = firstPipe >= 0 ? docKey.slice(0, firstPipe) : docKey;
-      const rest       = firstPipe >= 0 ? docKey.slice(firstPipe + 1) : "";
-      const lastPipe   = rest.lastIndexOf("|");
-      const docType    = lastPipe >= 0 ? rest.slice(0, lastPipe) : rest;
-      const docNum     = lastPipe >= 0 ? rest.slice(lastPipe + 1) : "";
-
-      const text  = `${docType} ${docNum}: סטטוס שונה מ"${prevStatus}" ל"${status}"`;
-      const entry: ActivityEntry = {
-        id: crypto.randomUUID(),
-        type: "status_changed",
-        text,
-        createdAt: Date.now(),
-      };
-      const existing = activityLog[customerName] ?? [];
-      activityLog = { ...activityLog, [customerName]: [...existing, entry] };
-      if (!writeActivity(activityLog)) setIoError("נכשלה שמירת יומן הפעילות — נפח האחסון מלא");
+      const rest         = firstPipe >= 0 ? docKey.slice(firstPipe + 1) : "";
+      const lastPipe     = rest.lastIndexOf("|");
+      const docType      = lastPipe >= 0 ? rest.slice(0, lastPipe) : rest;
+      const docNum       = lastPipe >= 0 ? rest.slice(lastPipe + 1) : "";
+      const text         = `${docType} ${docNum}: סטטוס שונה מ"${prevStatus}" ל"${status}"`;
+      ({ updatedLog: activityLog } = saveActivity(activityLog, customerName, "status_changed", text, docKey));
     }
 
     setState({ ...state, statuses, activityLog });
@@ -433,11 +455,9 @@ export function AppShell({ user }: { user: AppUser }) {
 
   function handleAddActivity(customerName: string, type: ActivityType, text: string) {
     if (state.mode !== "workspace") return;
-    const entry: ActivityEntry = { id: crypto.randomUUID(), type, text, createdAt: Date.now() };
-    const existing = state.activityLog[customerName] ?? [];
-    const activityLog: ActivityLog = { ...state.activityLog, [customerName]: [...existing, entry] };
-    if (!writeActivity(activityLog)) { setIoError("נכשלה שמירת יומן הפעילות — נפח האחסון מלא"); return; }
-    setState({ ...state, activityLog });
+    const { updatedLog, localOk } = saveActivity(state.activityLog, customerName, type, text, null);
+    if (!localOk) return;
+    setState({ ...state, activityLog: updatedLog });
   }
 
   if (state.mode === "loading") return null;
