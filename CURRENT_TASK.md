@@ -1,49 +1,63 @@
 # CURRENT TASK
 
-## Cloud Session 1 — Supabase Foundation — Complete
+## Pilot Readiness — Multi-User Smoke Test
 
-**Status:** Complete
-**Completed:** 2026-06-29
-
----
-
-## Objective
-
-Establish the cloud database foundation before the clerk pilot begins. All operational data (statuses, contacts, activity) must no longer live only in localStorage.
-
-## Deliverables
-
-| Item | Result |
-|------|--------|
-| Supabase project created (eu-central-1) | Done ✓ |
-| Auth configured (email/password, no confirm, 1h JWT) | Done ✓ |
-| Three users created: Avi (owner), Ben (owner), Clerk (clerk) | Done ✓ |
-| 7 tables created with full multi-tenant schema | Done ✓ |
-| `tenants.features` column for future feature flags | Done ✓ |
-| `tenants.outgoing_email` for business-level outgoing email | Done ✓ |
-| 9 indexes created | Done ✓ |
-| RLS enabled on all 7 tables | Done ✓ |
-| 16 RLS policies created and verified | Done ✓ |
-| `auth_tenant_id()` and `auth_user_role()` helper functions | Done ✓ |
-| Vault functions: `upsert_rivhit_token`, `get_rivhit_token` | Done ✓ |
-| Vault functions restricted to `service_role` only | Done ✓ |
-| Tenant + 3 users seeded and verified | Done ✓ |
-| Supabase CLI installed as dev dependency | Done ✓ |
-| Baseline migration file committed to Git | Done ✓ |
-
-## Files Changed
-
-- `package.json` — added `supabase` dev dependency
-- `supabase/config.toml` — Supabase CLI project config
-- `supabase/.gitignore` — ignores local Supabase temp files
-- `supabase/migrations/20260629000000_initial_schema.sql` — baseline schema migration
+**Status:** Pending
+**Planned:** 2026-06-29
 
 ---
 
-## Next Task
+## Context
 
-**Session 2 — Supabase Auth integration in Next.js**
+Sessions 2 and 3 are complete. The app now:
+- Requires login (Supabase auth, middleware-protected routes)
+- Stores the Rivhit API token in Supabase Vault (never in browser)
+- Reads and writes contacts, statuses, and activity log to Supabase (cloud-first, localStorage fallback)
+- Has a one-time bulk migration tool at `/settings` to push existing localStorage data to cloud
 
-See [`docs/daily/2026-06-29.md`](docs/daily/2026-06-29.md) → "Next Session" for the exact starting point and step-by-step plan.
+Three user accounts (Avi, Ben, Clerk) were created in Session 1 and are ready.
 
-Short version: install `@supabase/ssr`, create browser + server clients, add auth middleware, build login page, add auth callback route, create `.env.local` + `.env.example`. No database changes in Session 2.
+The only remaining gate before the clerk pilot is a live multi-user smoke test confirming that two users on the same tenant see each other's writes in real time.
+
+---
+
+## Smoke Test Plan
+
+### Setup
+- Avi logged in on Browser A
+- Clerk logged in on Browser B (or a different device)
+- Both see the same collections report (imported from the same data source)
+
+### Tests to run
+
+| # | Action | Expected |
+|---|--------|----------|
+| 1 | Clerk runs bulk migration at `/settings` | Existing localStorage data appears in Supabase |
+| 2 | Avi sets a document status → Clerk refreshes | Clerk sees the updated status |
+| 3 | Clerk saves a contact note → Avi refreshes | Avi sees the updated contact |
+| 4 | Avi adds a manual activity note → Clerk refreshes | Clerk sees the activity entry |
+| 5 | Avi saves a status → Clerk sets it to something different within seconds | Newer write wins; both users end up consistent after next refresh |
+| 6 | Both users online simultaneously → one user changes status | Other user sees the change after their next load/refresh |
+
+### Pass criteria
+All 6 tests pass with no data loss, no duplicate entries, and no ioError banners on either device under normal conditions.
+
+---
+
+## Optional (low priority, can do post-pilot)
+
+- Session 3.5 — sync log metadata: write to `sync_log` table on API sync
+- Activity log pagination: time-windowed fetch if tenant accumulates large history
+
+---
+
+## Previous Tasks
+
+| Task | Status | Completed |
+|------|--------|-----------|
+| Session 1 — Supabase Foundation | Complete | 2026-06-29 |
+| Session 2 — Auth Integration + Rivhit Vault | Complete | 2026-06-29 |
+| Session 3.1 — Customer Contacts cloud migration | Complete | 2026-06-29 |
+| Session 3.2 — Document Statuses cloud migration | Complete | 2026-06-29 |
+| Session 3.3 — Activity Log cloud migration | Complete | 2026-06-29 |
+| Session 3.4 — Bulk migration tool | Complete | 2026-06-29 |

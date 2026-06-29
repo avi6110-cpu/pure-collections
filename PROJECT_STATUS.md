@@ -91,7 +91,25 @@
 - [x] Vault functions for encrypted Rivhit token storage (`service_role` only)
 - [x] Supabase CLI installed; baseline migration committed to Git
 
-**Next:** Session 2 — Auth in Next.js (login page, middleware, protected routes)
+### Cloud Infrastructure — Session 2 Complete (2026-06-29)
+- [x] `@supabase/ssr` installed — browser + server + admin clients
+- [x] `src/middleware.ts` — redirects unauthenticated requests to `/login`
+- [x] `src/app/login/page.tsx` — Hebrew email/password login form
+- [x] `src/app/auth/callback/route.ts` — PKCE callback handler
+- [x] `.env.local` (gitignored) + `.env.example` (committed, empty values)
+- [x] `AppUser` type — `id`, `tenantId`, `email`, `fullName`, `role` from `users` table
+- [x] Rivhit token moved fully to Supabase Vault — never returned to browser
+- [x] All 7 `/api/rivhit/*` routes rewritten to call `getVaultToken()` server-side
+- [x] Settings page — vault hint display, token save, connection test
+- [x] `UploadForm`, `CustomerPanel`, `DocumentPreviewModal`, all dev/sync pages — token header removed entirely
+
+### Cloud Infrastructure — Session 3 Complete (2026-06-29)
+- [x] Session 3.1 — Customer contacts: cloud-first read, dual-write, localStorage fallback
+- [x] Session 3.2 — Document statuses + expected payment dates: cloud-first read, dual-write
+- [x] Session 3.3 — Activity log (including dispute notes): cloud-first read, shared `saveActivity` helper, `ON CONFLICT (id) DO NOTHING` insert
+- [x] Session 3.4 — Bulk migration tool: `POST /api/migrate/bulk` (idempotent, newer-wins for contacts/statuses, UUID-based dedup for activity); migration card in `/settings`
+
+**Next:** Multi-user smoke test (see `CURRENT_TASK.md`) — then clerk pilot.
 
 ---
 
