@@ -42,4 +42,8 @@ Establish the cloud database foundation before the clerk pilot begins. All opera
 
 ## Next Task
 
-Session 2 — Supabase Auth integration in Next.js: login page, middleware, protected routes, session management.
+**Session 2 — Supabase Auth integration in Next.js**
+
+See [`docs/daily/2026-06-29.md`](docs/daily/2026-06-29.md) → "Next Session" for the exact starting point and step-by-step plan.
+
+Short version: install `@supabase/ssr`, create browser + server clients, add auth middleware, build login page, add auth callback route, create `.env.local` + `.env.example`. No database changes in Session 2.
