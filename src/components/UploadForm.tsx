@@ -4,24 +4,6 @@ import { useRef, useState } from "react";
 import { extractRivhitRows } from "@/lib/parseRivhit";
 import type { RivhitRow } from "@/lib/parseRivhit";
 
-const SETTINGS_KEY = "pure-collections:settings";
-
-function readStoredToken(): string {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return "";
-    return (JSON.parse(raw) as { rivhitApiToken?: string }).rivhitApiToken ?? "";
-  } catch { return ""; }
-}
-
-function saveToken(token: string): void {
-  try {
-    const raw      = localStorage.getItem(SETTINGS_KEY);
-    const existing = raw ? (JSON.parse(raw) as object) : {};
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...existing, rivhitApiToken: token }));
-  } catch { /* ignore */ }
-}
-
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
 
 type ValidationResult =
@@ -38,8 +20,6 @@ type ParseState =
   | { status: "idle" }
   | { status: "parsing" }
   | { status: "error"; message: string };
-
-type TestState = "none" | "testing" | "ok" | "fail";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024)             return `${bytes} B`;
@@ -73,23 +53,9 @@ export function UploadForm({
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef  = useRef<File | null>(null);
 
-  // ── Excel state ──────────────────────────────────────────────────────────────
-  const [selected,        setSelected]        = useState<SelectedFile | null>(null);
-  const [parseState,      setParseState]      = useState<ParseState>({ status: "idle" });
-  const [confirmPending,  setConfirmPending]  = useState<{ rows: RivhitRow[]; rowCount: number } | null>(null);
-
-  // ── API card state ───────────────────────────────────────────────────────────
-  // showInput: false when a token is already stored (ready state); true when no token
-  const [token,        setToken]        = useState<string>(() =>
-    typeof window !== "undefined" ? readStoredToken() : ""
-  );
-  const [showInput,    setShowInput]    = useState<boolean>(() =>
-    typeof window !== "undefined" ? readStoredToken() === "" : true
-  );
-  const [revealToken,  setRevealToken]  = useState<boolean>(false);
-  const [showHelp,     setShowHelp]     = useState<boolean>(false);
-  const [testState,    setTestState]    = useState<TestState>("none");
-  const [testMessage,  setTestMessage]  = useState<string>("");
+  const [selected,       setSelected]       = useState<SelectedFile | null>(null);
+  const [parseState,     setParseState]     = useState<ParseState>({ status: "idle" });
+  const [confirmPending, setConfirmPending] = useState<{ rows: RivhitRow[]; rowCount: number } | null>(null);
 
   // ── Excel handlers ───────────────────────────────────────────────────────────
 
@@ -123,8 +89,6 @@ export function UploadForm({
       if (!ws) throw new Error("גיליון ריק");
       const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][];
       const parsedRows = extractRivhitRows(rawRows);
-      // Require confirmation when replacing an existing workspace (onCancel present)
-      // or when the file produced zero valid document rows.
       const needsConfirm = parsedRows.length === 0 || onCancel !== undefined;
       if (needsConfirm) {
         setConfirmPending({ rows: parsedRows, rowCount: parsedRows.length });
@@ -151,56 +115,16 @@ export function UploadForm({
     setConfirmPending(null);
   }
 
-  // ── API handlers ─────────────────────────────────────────────────────────────
-
-  function handleTokenChange(value: string) {
-    setToken(value);
-    saveToken(value);
-    // Reset test result whenever the token changes
-    if (testState !== "none") { setTestState("none"); setTestMessage(""); }
-  }
-
-  async function handleTest() {
-    if (!token.trim()) return;
-    setTestState("testing");
-    try {
-      const res  = await fetch("/api/rivhit/type-list", {
-        headers: { "X-Rivhit-Token": token.trim() },
-      });
-      const data = (await res.json()) as { error_code?: number; client_message?: string };
-      if (res.status === 502) {
-        setTestState("fail");
-        setTestMessage("Rivhit אינו זמין — בדוק חיבור לאינטרנט");
-        return;
-      }
-      if (data.error_code === 0) {
-        setTestState("ok");
-      } else if (typeof data.error_code === "number") {
-        setTestState("fail");
-        setTestMessage(data.client_message ?? "הבקשה נדחתה");
-      } else {
-        setTestState("fail");
-        setTestMessage("תגובה לא צפויה מהשרת");
-      }
-    } catch {
-      setTestState("fail");
-      setTestMessage("שגיאת רשת — בדוק חיבור לאינטרנט");
-    }
-  }
-
   // ── Derived ──────────────────────────────────────────────────────────────────
 
   const isExcelValid   = selected?.validation.valid === true;
   const isExcelParsing = parseState.status === "parsing";
   const isSyncing      = syncState === "loading";
-  const canSync        = !isSyncing && token.trim() !== "" && onApiSync !== undefined;
+  const canSync        = !isSyncing && onApiSync !== undefined;
   const hasSyncError   = syncState === "error" && Boolean(syncError);
-  const showVerified   = testState === "ok" && !hasSyncError;
 
   const apiCardBorder = hasSyncError
     ? "border-red-300 bg-red-50"
-    : showVerified
-    ? "border-green-400 bg-green-50"
     : "border-blue-400 bg-blue-50";
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -243,75 +167,6 @@ export function UploadForm({
               מסנכרן את כל החשבוניות הפתוחות ישירות מחשבון ריווחית שלך. ללא ייצוא ידני.
             </p>
 
-            {/* Token input — shown when no stored token, or after "שנה טוקן" */}
-            {showInput && (
-              <div className="mb-3">
-                <div className="mb-1.5 flex gap-2">
-                  <input
-                    type={revealToken ? "text" : "password"}
-                    value={token}
-                    onChange={(e) => handleTokenChange(e.target.value)}
-                    placeholder="הדבק את ה-API Token..."
-                    dir="ltr"
-                    disabled={isSyncing}
-                    className="min-w-0 flex-1 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs focus:border-blue-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 disabled:opacity-60"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setRevealToken((v) => !v)}
-                    className="shrink-0 rounded-lg border border-blue-300 bg-white px-2.5 py-2 text-xs text-gray-500 hover:bg-gray-50"
-                  >
-                    {revealToken ? "הסתר" : "הצג"}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowHelp((v) => !v)}
-                  className="text-[10px] text-blue-500 transition-colors hover:text-blue-700"
-                >
-                  {showHelp ? "▲ הסתר" : "▾ היכן מוצאים את הטוקן?"}
-                </button>
-                {showHelp && (
-                  <div className="mt-2 rounded-lg bg-blue-900 px-3 py-2.5 text-[10px] leading-loose text-blue-100">
-                    <div className="mb-0.5 font-semibold text-white">כיצד לקבל טוקן API:</div>
-                    <div>1. היכנס לחשבון ריווחית שלך</div>
-                    <div>2. עבור להגדרות ← API</div>
-                    <div>3. העתק את ה-API Token</div>
-                    <div>4. הדבק כאן ↑</div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Ready banner — token stored, no test run yet */}
-            {!showInput && testState === "none" && !hasSyncError && (
-              <div className="mb-3 rounded-lg border border-blue-200 bg-white px-3 py-2.5">
-                <p className="text-xs font-semibold text-blue-800">● טוקן API מוגדר</p>
-                <p className="mt-0.5 text-[10px] text-blue-500">מוכן לסנכרון</p>
-              </div>
-            )}
-
-            {/* Testing banner */}
-            {testState === "testing" && (
-              <div className="mb-3 rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-xs text-blue-700">
-                ● בודק חיבור...
-              </div>
-            )}
-
-            {/* Verified banner */}
-            {showVerified && (
-              <div className="mb-3 rounded-lg border border-green-300 bg-white px-3 py-2.5 text-xs font-semibold text-green-700">
-                ✓ חיבור תקין ל-Rivhit
-              </div>
-            )}
-
-            {/* Test failed banner */}
-            {testState === "fail" && (
-              <div className="mb-3 rounded-lg border border-red-200 bg-white px-3 py-2.5 text-xs text-red-700">
-                ✗ {testMessage}
-              </div>
-            )}
-
             {/* Sync error banner */}
             {hasSyncError && (
               <div className="mb-3 rounded-lg border border-red-200 bg-white px-3 py-2.5 text-xs text-red-700">
@@ -319,15 +174,12 @@ export function UploadForm({
               </div>
             )}
 
-            {/* Test connection button — only when input visible, token present, not busy */}
-            {showInput && token.trim() !== "" && testState !== "testing" && !isSyncing && (
-              <button
-                type="button"
-                onClick={() => { void handleTest(); }}
-                className="mb-2 w-full rounded-lg border border-blue-300 bg-white py-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-50"
-              >
-                בדוק חיבור
-              </button>
+            {/* No-token hint */}
+            {!hasSyncError && (
+              <div className="mb-3 rounded-lg border border-blue-200 bg-white px-3 py-2.5">
+                <p className="text-xs font-semibold text-blue-800">● מוכן לסנכרון</p>
+                <p className="mt-0.5 text-[10px] text-blue-500">הטוקן מנוהל בהגדרות</p>
+              </div>
             )}
 
             {/* Sync button */}
@@ -335,35 +187,10 @@ export function UploadForm({
               type="button"
               onClick={() => onApiSync?.()}
               disabled={!canSync}
-              className={`w-full rounded-lg py-2.5 text-xs font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                showVerified
-                  ? "bg-green-600 hover:bg-green-700"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
+              className="w-full rounded-lg bg-blue-600 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isSyncing ? "מסנכרן..." : "סנכרן עכשיו ←"}
             </button>
-
-            {/* Ready-state links: שנה טוקן · בדוק חיבור */}
-            {!showInput && testState !== "testing" && !isSyncing && (
-              <div className="mt-2 flex justify-center gap-3 text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => setShowInput(true)}
-                  className="text-blue-500 transition-colors hover:text-blue-700"
-                >
-                  שנה טוקן
-                </button>
-                <span className="text-gray-300">·</span>
-                <button
-                  type="button"
-                  onClick={() => { void handleTest(); }}
-                  className="text-blue-500 transition-colors hover:text-blue-700"
-                >
-                  בדוק חיבור
-                </button>
-              </div>
-            )}
           </div>
 
           {/* ══════════════════ EXCEL CARD ══════════════════ */}

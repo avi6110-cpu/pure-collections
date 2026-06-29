@@ -12,14 +12,6 @@ type PreviewState =
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function readToken(): string {
-  try {
-    const raw = localStorage.getItem("pure-collections:settings");
-    if (!raw) return "";
-    return (JSON.parse(raw) as { rivhitApiToken?: string }).rivhitApiToken ?? "";
-  } catch { return ""; }
-}
-
 function findFirstUrl(data: unknown): string | null {
   if (typeof data === "string") return /^https?:\/\//.test(data) ? data : null;
   if (Array.isArray(data)) {
@@ -90,12 +82,6 @@ export function DocumentPreviewModal({
     let cancelled = false;
 
     async function fetchLink() {
-      const token = readToken();
-      if (!token) {
-        if (!cancelled) setState({ kind: "error", message: "טוקן API לא מוגדר — פתח הגדרות והכנס את הטוקן" });
-        return;
-      }
-
       const typeNum = DOC_TYPE_NUM[documentType.trim()];
       if (typeNum === undefined) {
         if (!cancelled) setState({ kind: "error", message: `סוג מסמך "${documentType}" אינו נתמך לצפייה` });
@@ -105,7 +91,7 @@ export function DocumentPreviewModal({
       try {
         const res = await fetch("/api/rivhit/document-copy", {
           method:  "POST",
-          headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+          headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ document_type: typeNum, document_number: documentNumber }),
         });
 

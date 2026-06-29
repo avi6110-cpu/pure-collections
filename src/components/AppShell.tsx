@@ -21,7 +21,6 @@ const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
 const STATUSES_KEY = "pure-collections:status";
 const ACTIVITY_KEY = "pure-collections:activity";
-const SETTINGS_KEY = "pure-collections:settings";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -162,15 +161,6 @@ function writeActivity(log: ActivityLog): boolean {
   } catch { return false; }
 }
 
-function readToken(): string {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as { rivhitApiToken?: string };
-    return parsed.rivhitApiToken ?? "";
-  } catch { return ""; }
-}
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function AppShell({ user }: { user: AppUser }) {
@@ -223,18 +213,11 @@ export function AppShell({ user }: { user: AppUser }) {
     setSyncError(null);
     setSyncStats(null);
 
-    const token = readToken();
-    if (!token) {
-      setSyncState("error");
-      setSyncError("טוקן API לא מוגדר — עבור להגדרות");
-      return;
-    }
-
     try {
       // ── Step 1: Fetch open documents ────────────────────────────────────
       const docRes = await fetch("/api/rivhit/customer-open-documents", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       const docData: unknown = await docRes.json();
@@ -256,7 +239,7 @@ export function AppShell({ user }: { user: AppUser }) {
       try {
         const listRes = await fetch("/api/rivhit/customer-list", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
         const listData: unknown = await listRes.json();

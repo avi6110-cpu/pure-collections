@@ -88,17 +88,6 @@ function findArrayInResponse(data: unknown): Record<string, unknown>[] | null {
   return null;
 }
 
-function readToken(): string {
-  try {
-    const raw = localStorage.getItem("pure-collections:settings");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as { rivhitApiToken?: string };
-    return parsed.rivhitApiToken ?? "";
-  } catch {
-    return "";
-  }
-}
-
 // ── Result types ──────────────────────────────────────────────────────────────
 
 type ProbeStatus = "idle" | "running" | "ok" | "error" | "no-data";
@@ -152,12 +141,6 @@ export default function ContactCheckPage() {
   const [state, setState] = useState<PageState>(INITIAL);
 
   async function runChecks() {
-    const token = readToken();
-    if (!token) {
-      startTransition(() => setState({ ...INITIAL, noToken: true }));
-      return;
-    }
-
     startTransition(() => setState({ ...INITIAL, running: true }));
 
     // ── Probe A: Customer.OpenDocuments ───────────────────────────────────────
@@ -167,7 +150,7 @@ export default function ContactCheckPage() {
     try {
       const res = await fetch("/api/rivhit/customer-open-documents", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       const data: unknown = await res.json();
@@ -205,7 +188,7 @@ export default function ContactCheckPage() {
     try {
       const res = await fetch("/api/rivhit/customer-list", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       const data: unknown = await res.json();
@@ -256,7 +239,7 @@ export default function ContactCheckPage() {
       try {
         const res = await fetch("/api/rivhit/customer-get", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ customer_id: detectedCustomerId }),
         });
         const data: unknown = await res.json();

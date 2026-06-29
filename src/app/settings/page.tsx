@@ -1,40 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const APP_VERSION = "0.1.0";
-const SETTINGS_KEY = "pure-collections:settings";
-const REPORT_KEY   = "pure-collections:report";
+const APP_VERSION   = "0.1.0";
+const REPORT_KEY    = "pure-collections:report";
+const SETTINGS_KEY  = "pure-collections:settings";
 
-// ── Persistence ──────────────────────────────────────────────────────────────
+// ── Persistence helpers ──────────────────────────────────────────────────────
 
-interface PersistedSettings {
-  rivhitApiToken?: string;
-}
+interface StoredSettings { rivhitApiToken?: string }
+interface StoredReport   { importedAt?: number; importSource?: "api" | "excel" }
 
-interface StoredReport {
-  importedAt?:   number;
-  importSource?: "api" | "excel";
-}
-
-function readSettings(): PersistedSettings {
+function readLocalToken(): string {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as PersistedSettings;
-  } catch { return {}; }
+    if (!raw) return "";
+    return (JSON.parse(raw) as StoredSettings).rivhitApiToken ?? "";
+  } catch { return ""; }
 }
 
-function writeSettings(patch: PersistedSettings): void {
+function clearLocalToken(): void {
   try {
-    const existing = readSettings();
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...existing, ...patch }));
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const cur: StoredSettings = raw ? (JSON.parse(raw) as StoredSettings) : {};
+    delete cur.rivhitApiToken;
+    if (Object.keys(cur).length === 0) {
+      localStorage.removeItem(SETTINGS_KEY);
+    } else {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(cur));
+    }
   } catch {}
 }
 
-function readSystemInfo(): { importedAt: number | null; importSource: "api" | "excel" | null } {
+function readSystemInfo() {
   try {
     const raw = localStorage.getItem(REPORT_KEY);
     if (!raw) return { importedAt: null, importSource: null };
@@ -46,15 +46,42 @@ function readSystemInfo(): { importedAt: number | null; importSource: "api" | "e
   } catch { return { importedAt: null, importSource: null }; }
 }
 
-// ── Connection test ──────────────────────────────────────────────────────────
+// ── API helpers ──────────────────────────────────────────────────────────────
+
+async function fetchVaultHint(): Promise<string | null> {
+  try {
+    const res  = await fetch("/api/settings/rivhit-token");
+    const data = (await res.json()) as { hint?: string | null };
+    return data.hint ?? null;
+  } catch { return null; }
+}
+
+async function saveToVault(token: string): Promise<{ ok: true; hint: string } | { ok: false; error: string }> {
+  try {
+    const res  = await fetch("/api/settings/rivhit-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    const data = (await res.json()) as { hint?: string; error?: string };
+    if (!res.ok || !data.hint) {
+      return { ok: false, error: data.error ?? "שגיאה לא ידועה" };
+    }
+    return { ok: true, hint: data.hint };
+  } catch {
+    return { ok: false, error: "שגיאת רשת" };
+  }
+}
+
+// ── Test-connection result ───────────────────────────────────────────────────
 
 type TestResult =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "success"; typeCount: number }
+  | { kind: "no_vault_token" }
   | { kind: "bad_token"; message: string }
   | { kind: "unreachable" }
-  | { kind: "no_token" }
   | { kind: "error"; message: string };
 
 interface RivhitResponse {
@@ -66,43 +93,62 @@ interface RivhitResponse {
 // ── Settings page ────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [token, setToken]         = useState<string>(
-    () => typeof window !== "undefined" ? readSettings().rivhitApiToken ?? "" : ""
-  );
-  const [showToken, setShowToken] = useState(false);
-  const [saved, setSaved]         = useState(false);
-  const [result, setResult]       = useState<TestResult>({ kind: "idle" });
-  const [sysInfo]                 = useState(
+  const [vaultHint,      setVaultHint]      = useState<string | null>(null);
+  const [hasLocalToken,  setHasLocalToken]  = useState(false);
+  const [newToken,       setNewToken]       = useState("");
+  const [saving,         setSaving]         = useState(false);
+  const [saveError,      setSaveError]      = useState<string | null>(null);
+  const [savedOk,        setSavedOk]        = useState(false);
+  const [testResult,     setTestResult]     = useState<TestResult>({ kind: "idle" });
+  const [sysInfo]                           = useState(
     () => typeof window !== "undefined" ? readSystemInfo() : { importedAt: null, importSource: null }
   );
 
-  function handleSave() {
-    writeSettings({ rivhitApiToken: token });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    void fetchVaultHint().then(setVaultHint);
+    setHasLocalToken(readLocalToken() !== "");
+  }, []);
+
+  async function handleSave() {
+    const trimmed = newToken.trim();
+    if (!trimmed) { setSaveError("הטוקן לא יכול להיות ריק"); return; }
+    setSaving(true);
+    setSaveError(null);
+    setSavedOk(false);
+
+    const result = await saveToVault(trimmed);
+    setSaving(false);
+
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
+    }
+
+    setVaultHint(result.hint);
+    setNewToken("");
+    setSavedOk(true);
+    clearLocalToken();
+    setHasLocalToken(false);
+    setTimeout(() => setSavedOk(false), 3000);
   }
 
   async function handleTest() {
-    if (!token.trim()) { setResult({ kind: "no_token" }); return; }
-    setResult({ kind: "loading" });
+    setTestResult({ kind: "loading" });
     try {
-      const res  = await fetch("/api/rivhit/type-list", {
-        headers: { "X-Rivhit-Token": token.trim() },
-      });
+      const res  = await fetch("/api/rivhit/type-list");
+      if (res.status === 401) { setTestResult({ kind: "no_vault_token" }); return; }
+      if (res.status === 502) { setTestResult({ kind: "unreachable" }); return; }
       const data = (await res.json()) as RivhitResponse;
-      if (res.status === 502) { setResult({ kind: "unreachable" }); return; }
       if (data.error_code === 0) {
-        writeSettings({ rivhitApiToken: token });
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
-        setResult({ kind: "success", typeCount: data.data?.document_type_list?.length ?? 0 });
+        setTestResult({ kind: "success", typeCount: data.data?.document_type_list?.length ?? 0 });
       } else if (typeof data.error_code === "number") {
-        setResult({ kind: "bad_token", message: data.client_message ?? "הבקשה נדחתה" });
+        setTestResult({ kind: "bad_token", message: data.client_message ?? "הבקשה נדחתה" });
       } else {
-        setResult({ kind: "error", message: "תגובה לא צפויה מהשרת" });
+        setTestResult({ kind: "error", message: "תגובה לא צפויה מהשרת" });
       }
     } catch {
-      setResult({ kind: "error", message: "שגיאת רשת" });
+      setTestResult({ kind: "error", message: "שגיאת רשת" });
     }
   }
 
@@ -118,53 +164,77 @@ export default function SettingsPage() {
 
         <h1 className="text-xl font-bold text-gray-800">הגדרות</h1>
 
+        {/* ── Migration banner ───────────────────────────────────────────── */}
+        {hasLocalToken && vaultHint === null && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+            <p className="font-semibold">נמצא טוקן Rivhit מקומי</p>
+            <p className="mt-1 text-amber-700">
+              הטוקן שמור רק בדפדפן זה ולא ב-Vault. הדבק אותו שוב בשדה למטה ולחץ &quot;שמור ב-Vault&quot; כדי להגן עליו ולאפשר סנכרון מכל מכשיר.
+            </p>
+          </div>
+        )}
+
         {/* ── Rivhit connection ──────────────────────────────────────────── */}
         <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="mb-1 text-base font-semibold text-gray-700">חיבור ל-Rivhit</h2>
-          <p className="mb-5 text-sm text-gray-500">
-            טוקן ה-API נשמר מקומית בדפדפן בלבד ואינו נשלח לשום שרת חיצוני.
+          <p className="mb-4 text-sm text-gray-500">
+            הטוקן נשמר ב-Vault מוצפן. הוא אינו מוצג ואינו נשלח לדפדפן.
           </p>
 
-          <label className="mb-1.5 block text-sm font-medium text-gray-600">API Token</label>
-          <div className="mb-4 flex gap-2">
+          {/* Current vault state */}
+          <div className="mb-5 flex items-center gap-2 text-sm">
+            <span className="text-gray-500">מצב נוכחי:</span>
+            {vaultHint !== null ? (
+              <span className="rounded-md bg-green-50 px-2 py-0.5 font-mono text-xs text-green-700">
+                {vaultHint}
+              </span>
+            ) : (
+              <span className="text-gray-400">לא הוגדר</span>
+            )}
+          </div>
+
+          <label className="mb-1.5 block text-sm font-medium text-gray-600">
+            הדבק טוקן חדש
+          </label>
+          <div className="mb-4">
             <input
-              type={showToken ? "text" : "password"}
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
+              type="password"
+              value={newToken}
+              onChange={(e) => setNewToken(e.target.value)}
               placeholder="הדבק את ה-API Token כאן"
-              className="flex-1 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-indigo-500 focus:bg-white focus:outline-none"
               dir="ltr"
               autoComplete="off"
             />
-            <button
-              type="button"
-              onClick={() => setShowToken((v) => !v)}
-              className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500 hover:bg-gray-100"
-            >
-              {showToken ? "הסתר" : "הצג"}
-            </button>
           </div>
+
+          {saveError && (
+            <div className="mb-3 rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700">
+              {saveError}
+            </div>
+          )}
 
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={handleSave}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+              onClick={() => { void handleSave(); }}
+              disabled={saving || !newToken.trim()}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
             >
-              {saved ? "נשמר ✓" : "שמור"}
+              {saving ? "שומר…" : savedOk ? "נשמר ב-Vault ✓" : "שמור ב-Vault"}
             </button>
             <button
               type="button"
               onClick={() => { void handleTest(); }}
-              disabled={result.kind === "loading"}
+              disabled={testResult.kind === "loading"}
               className="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-700 transition-colors hover:bg-indigo-50 disabled:opacity-50"
             >
-              {result.kind === "loading" ? "בודק..." : "בדוק חיבור"}
+              {testResult.kind === "loading" ? "בודק..." : "בדוק חיבור"}
             </button>
           </div>
 
-          {result.kind !== "idle" && result.kind !== "loading" && (
-            <ConnectionResult result={result} />
+          {testResult.kind !== "idle" && testResult.kind !== "loading" && (
+            <ConnectionResult result={testResult} />
           )}
         </section>
 
@@ -201,12 +271,12 @@ function ConnectionResult({ result }: { result: RenderedResult }) {
   const base = "mt-4 rounded-lg px-4 py-3 text-sm";
   if (result.kind === "success")
     return <div className={`${base} bg-green-50 text-green-700`}>✓ חיבור תקין — {result.typeCount} סוגי מסמכים נמצאו</div>;
+  if (result.kind === "no_vault_token")
+    return <div className={`${base} bg-amber-50 text-amber-700`}>טוקן לא הוגדר ב-Vault — שמור טוקן חדש תחילה</div>;
   if (result.kind === "bad_token")
     return <div className={`${base} bg-red-50 text-red-700`}>✗ טוקן שגוי — {result.message}</div>;
   if (result.kind === "unreachable")
     return <div className={`${base} bg-red-50 text-red-700`}>✗ Rivhit אינו זמין — בדוק חיבור לאינטרנט</div>;
-  if (result.kind === "no_token")
-    return <div className={`${base} bg-amber-50 text-amber-700`}>יש להכניס טוקן לפני הבדיקה</div>;
   return <div className={`${base} bg-red-50 text-red-700`}>✗ שגיאה — {result.message}</div>;
 }
 

@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getVaultToken } from "@/lib/supabase/rivhit-vault";
 
 // force_copy is always false — server-enforced, cannot be overridden by client.
 // This requests an existing copy link rather than forcing a new document to be created.
 
 export async function POST(request: NextRequest) {
-  const token =
-    request.headers.get("X-Rivhit-Token") ??
-    process.env.RIVHIT_API_TOKEN;
-
+  const token = await getVaultToken();
   if (!token) {
     return NextResponse.json(
-      { error: "No API token provided" },
-      { status: 400 },
+      { error: "טוקן Rivhit לא מוגדר — עבור להגדרות" },
+      { status: 401 },
     );
   }
 

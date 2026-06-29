@@ -3,16 +3,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-// ── Token reader ─────────────────────────────────────────────────────────────
-
-function readToken(): string {
-  try {
-    const raw = localStorage.getItem("pure-collections:settings");
-    if (!raw) return "";
-    return (JSON.parse(raw) as { rivhitApiToken?: string }).rivhitApiToken ?? "";
-  } catch { return ""; }
-}
-
 // ── Document analysis types ──────────────────────────────────────────────────
 
 interface DocFinding {
@@ -69,7 +59,6 @@ function analyzeDocResponse(data: unknown): DocAnalysis {
 // ── useDocTest hook ──────────────────────────────────────────────────────────
 
 function useDocTest(
-  token: string,
   endpoint: string,
   buildBody: (type: number, num: number) => Record<string, unknown>,
 ) {
@@ -81,7 +70,6 @@ function useDocTest(
   const [error,     setError]     = useState<string | null>(null);
 
   async function runTest() {
-    if (!token.trim()) { setError("יש להכניס טוקן API בהגדרות לפני הבדיקה"); return; }
     const typeNum = parseInt(docType, 10);
     const numNum  = parseInt(docNumber, 10);
     if (isNaN(typeNum) || isNaN(numNum)) { setError("יש להכניס מספרים תקינים"); return; }
@@ -89,7 +77,7 @@ function useDocTest(
     try {
       const res  = await fetch(endpoint, {
         method:  "POST",
-        headers: { "Content-Type": "application/json", "X-Rivhit-Token": token.trim() },
+        headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(buildBody(typeNum, numNum)),
       });
       const data: unknown = await res.json();
@@ -108,10 +96,6 @@ function useDocTest(
 // ── Dev page ─────────────────────────────────────────────────────────────────
 
 export default function DevPage() {
-  const [token] = useState<string>(
-    () => typeof window !== "undefined" ? readToken() : ""
-  );
-
   return (
     <div className="min-h-screen bg-gray-50 p-6" dir="rtl">
       <div className="mx-auto max-w-2xl space-y-5">
@@ -120,12 +104,8 @@ export default function DevPage() {
           <p className="text-sm font-semibold text-amber-800">⚠️ כלי פיתוח בלבד</p>
           <p className="mt-1 text-xs text-amber-700">
             דף זה מיועד לבדיקות API של המפתח בלבד. אין לשתף קישור זה עם משתמשי קצה.
-            {!token && (
-              <span className="mt-1 block font-medium text-amber-900">
-                לא נמצא טוקן API — יש להגדירו בדף{" "}
-                <a href="/settings" className="underline">/settings</a> תחילה.
-              </span>
-            )}
+            הטוקן מנוהל ב-Vault — ניתן לבדוק ולשנותו ב
+            <a href="/settings" className="underline"> הגדרות</a>.
           </p>
         </div>
 
@@ -134,7 +114,6 @@ export default function DevPage() {
           badge="בוצע — לא נמצא קישור"
           badgeColor="gray"
           description="קריאה בלבד. בדיקה קודמת הראתה: המסמך מוחזר אך ללא שדה document_link."
-          token={token}
           endpoint="/api/rivhit/document-details"
           buildBody={(t, n) => ({ document_type: t, document_number: n })}
         />
@@ -144,7 +123,6 @@ export default function DevPage() {
           badge="ממתין לבדיקה"
           badgeColor="blue"
           description="קריאה בלבד. בודק האם רשימת מסמכים מכילה שדה document_link או URL לכל פריט."
-          token={token}
           endpoint="/api/rivhit/document-list"
           buildBody={(t, n) => ({
             from_document_type:   t,
@@ -169,7 +147,6 @@ export default function DevPage() {
               </ul>
             </div>
           }
-          token={token}
           endpoint="/api/rivhit/document-copy"
           buildBody={(t, n) => ({ document_type: t, document_number: n })}
         />
@@ -261,14 +238,13 @@ interface DocTestCardProps {
   badgeColor: string;
   description: string;
   note?:     ReactNode;
-  token:     string;
   endpoint:  string;
   buildBody: (type: number, num: number) => Record<string, unknown>;
 }
 
-function DocTestCard({ title, badge, badgeColor, description, note, token, endpoint, buildBody }: DocTestCardProps) {
+function DocTestCard({ title, badge, badgeColor, description, note, endpoint, buildBody }: DocTestCardProps) {
   const { docType, setDocType, docNumber, setDocNumber, analysis, raw, loading, error, runTest } =
-    useDocTest(token, endpoint, buildBody);
+    useDocTest(endpoint, buildBody);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">

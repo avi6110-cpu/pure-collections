@@ -69,17 +69,6 @@ function normalizePhone(raw: string): string {
 
 // ── Rivhit document link fetching ───────────────────────────────────────────
 
-function readToken(): string {
-  try {
-    const raw = localStorage.getItem("pure-collections:settings");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as { rivhitApiToken?: string };
-    return parsed.rivhitApiToken ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function extractFirstUrl(data: unknown): string | null {
   if (typeof data === "string") return /^https?:\/\//.test(data) ? data : null;
   if (Array.isArray(data)) {
@@ -101,7 +90,6 @@ function extractFirstUrl(data: unknown): string | null {
 interface LinkResult { link: string | null; debug: string }
 
 async function fetchDocumentLink(
-  token: string,
   documentType: string,
   documentNumber: number,
 ): Promise<LinkResult> {
@@ -111,7 +99,7 @@ async function fetchDocumentLink(
   try {
     const res = await fetch("/api/rivhit/document-copy", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Rivhit-Token": token },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         document_type:   typeNum,
         document_number: documentNumber,
@@ -131,11 +119,9 @@ async function fetchDocumentLink(
 }
 
 async function fetchDocumentLinks(rows: EnrichedRow[]): Promise<{ map: Map<string, string>; debugLines: string[]; tokenFound: boolean }> {
-  const token = readToken();
-  if (!token) return { map: new Map(), debugLines: ["טוקן לא נמצא — בדוק הגדרות"], tokenFound: false };
   const settled = await Promise.allSettled(
     rows.map(async (row) => {
-      const result = await fetchDocumentLink(token, row.documentType, row.documentNumber);
+      const result = await fetchDocumentLink(row.documentType, row.documentNumber);
       return { key: docKey(row), label: `${row.documentType} ${row.documentNumber}`, ...result };
     }),
   );
@@ -768,11 +754,6 @@ function CommunicationSection({ customerName, selectedRows, contact, onAddActivi
     selectedRows.every((r) => r.daysUntilDue >= 0 && r.daysUntilDue <= APPROACHING_WINDOW_DAYS);
 
   async function fetchLinks(): Promise<Map<string, string>> {
-    const token = readToken();
-    if (!token) {
-      setLinksError("טוקן API לא מוגדר — בדוק הגדרות");
-      return new Map();
-    }
     setLinksError(null);
     const { map } = await fetchDocumentLinks(selectedRows);
     return map;

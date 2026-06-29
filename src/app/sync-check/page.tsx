@@ -245,19 +245,6 @@ function analyzeCoverage(
   });
 }
 
-// ── Token reader ──────────────────────────────────────────────────────────────
-
-function readToken(): string {
-  try {
-    const raw = localStorage.getItem("pure-collections:settings");
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as { rivhitApiToken?: string };
-    return parsed.rivhitApiToken ?? "";
-  } catch {
-    return "";
-  }
-}
-
 // ── API response helpers ──────────────────────────────────────────────────────
 
 function findDocumentArray(
@@ -555,7 +542,6 @@ export default function SyncCheckPage() {
   async function handleFetch() {
     if (state.step !== "excel_ready" && state.step !== "fetch_error") return;
     const excelRows = state.excelRows;
-    const token = readToken();
     startTransition(() => setState({ step: "fetching", excelRows }));
 
     const extra: Record<string, unknown> = {};
@@ -566,10 +552,7 @@ export default function SyncCheckPage() {
     try {
       const res = await fetch("/api/rivhit/customer-open-documents", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Rivhit-Token": token,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(extra),
       });
       const data: unknown = await res.json();

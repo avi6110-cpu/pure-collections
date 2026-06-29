@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getVaultToken } from "@/lib/supabase/rivhit-vault";
 
 export async function POST(request: NextRequest) {
-  const token =
-    request.headers.get("X-Rivhit-Token") ??
-    process.env.RIVHIT_API_TOKEN;
-
+  const token = await getVaultToken();
   if (!token) {
     return NextResponse.json(
-      { error: "No API token provided" },
-      { status: 400 },
+      { error: "טוקן Rivhit לא מוגדר — עבור להגדרות" },
+      { status: 401 },
     );
   }
 
