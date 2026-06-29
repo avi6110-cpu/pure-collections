@@ -1,125 +1,45 @@
 # CURRENT TASK
 
-## CustomerPanel Default Selection Fix — Complete
+## Cloud Session 1 — Supabase Foundation — Complete
 
 **Status:** Complete
-**Completed:** 2026-06-22
-**Commit:** 701ce04
+**Completed:** 2026-06-29
 
 ---
 
 ## Objective
 
-The default document selection in CustomerPanel used `ageDays >= 30`, selecting only yellow/red band documents. For customers with large fresh invoices and small old invoices, this caused the panel to open with only the tiny overdue amount selected — e.g. ₪28 selected while ₪21,946 was missed. This created incorrect WhatsApp/Email communication risk.
+Establish the cloud database foundation before the clerk pilot begins. All operational data (statuses, contacts, activity) must no longer live only in localStorage.
 
 ## Deliverables
 
 | Item | Result |
 |------|--------|
-| Initial `selectedDocs` filter updated to match "בחר הכל" | Done ✓ |
-| Credit invoices excluded from initial selection | Done ✓ |
-| All non-paid non-credit docs selected by default | Done ✓ |
-| דרכא: 9 ייכללו, ₪21,974.20 (was ₪28) | Done ✓ |
-| הנהלת בתי המשפט: 1 ייכללו (was 0) | Done ✓ |
-| Credit cards remain unselectable (no checkbox) | Done ✓ |
-| `npx tsc --noEmit` | Zero errors ✓ |
-| `npx next build` | Clean ✓ |
+| Supabase project created (eu-central-1) | Done ✓ |
+| Auth configured (email/password, no confirm, 1h JWT) | Done ✓ |
+| Three users created: Avi (owner), Ben (owner), Clerk (clerk) | Done ✓ |
+| 7 tables created with full multi-tenant schema | Done ✓ |
+| `tenants.features` column for future feature flags | Done ✓ |
+| `tenants.outgoing_email` for business-level outgoing email | Done ✓ |
+| 9 indexes created | Done ✓ |
+| RLS enabled on all 7 tables | Done ✓ |
+| 16 RLS policies created and verified | Done ✓ |
+| `auth_tenant_id()` and `auth_user_role()` helper functions | Done ✓ |
+| Vault functions: `upsert_rivhit_token`, `get_rivhit_token` | Done ✓ |
+| Vault functions restricted to `service_role` only | Done ✓ |
+| Tenant + 3 users seeded and verified | Done ✓ |
+| Supabase CLI installed as dev dependency | Done ✓ |
+| Baseline migration file committed to Git | Done ✓ |
 
 ## Files Changed
 
-- `src/components/CustomerPanel.tsx` — removed `ageDays >= 30` from initial selection filter; added `CREDIT_INVOICE_TYPE` exclusion
-
----
-
-## Previous Task
-
-KPI Band Alignment Fix — Complete (2026-06-22, commit 4ac65c7)
-
----
-
-## Objective
-
-Aging-band KPI cards (60+, 30–60, <30) were computing from `enriched` (all 481 rows including credit invoices), while the table body was computing from `tableRows` (256 actionable invoices). This caused a negative 60+ balance (−₪42,523) and a KPI/table count mismatch (250 vs 51 rows).
-
-## Deliverables
-
-| Item | Result |
-|------|--------|
-| Band KPI balances sourced from `tableRows` | Done ✓ |
-| Band KPI counts sourced from `tableRows` | Done ✓ |
-| Main KPI net balance stays on `enriched` | Done ✓ |
-| 60+ click → table shows same count | 51 = 51 ✓ |
-| 30–60 click → table shows same count | 9 = 9 ✓ |
-| No negative KPI values | Done ✓ |
-| `npx tsc --noEmit` | Zero errors ✓ |
-| `npx next build` | Clean ✓ |
-
-## Files Changed
-
-- `src/components/CollectionsTable.tsx` — moved `tableRows` before `summary`; split `summary` into two passes: `enriched` for `totalBalance`, `tableRows` for all band KPIs and counts
-
----
-
-## Previous Task
-
-Credit Invoice Exclusion from Work Queue — Complete (2026-06-22, commit 3c90168)
+- `package.json` — added `supabase` dev dependency
+- `supabase/config.toml` — Supabase CLI project config
+- `supabase/.gitignore` — ignores local Supabase temp files
+- `supabase/migrations/20260629000000_initial_schema.sql` — baseline schema migration
 
 ---
 
 ## Next Task
 
-To be defined by user.
-
----
-
-## Credit Invoice Exclusion from Work Queue — Complete
-
-**Status:** Complete
-**Completed:** 2026-06-22
-**Commit:** 3c90168
-
----
-
-## Objective
-
-Credit invoices (חשבונית מס זיכוי) are accounting context documents, not actionable
-collection tasks. Exclude them from the main collections table while keeping them
-visible inside CustomerPanel as read-only context, and preserving their negative
-remainingBalance values in all KPI and customer balance calculations.
-
----
-
-## Deliverables
-
-| Item | Result |
-|------|--------|
-| `CREDIT_INVOICE_TYPE` constant exported from `parseRivhit.ts` | Done ✓ |
-| `tableRows` useMemo excludes credit invoices from main table display pipeline | Done ✓ |
-| `enriched` (KPI source) unchanged — net balance math preserved | Done ✓ |
-| `customerRows` sourced from `enriched` — customer panel totals include credits | Done ✓ |
-| "מתוך" denominator uses `tableRows.length` (non-credit count) | Done ✓ |
-| `selectAll` excludes credit invoices from selection | Done ✓ |
-| Credit DocCard: gray background, no checkbox, no status picker, no follow-up badge | Done ✓ |
-| Credit DocCard: "זיכוי" label, eye/preview button retained | Done ✓ |
-| `npx tsc --noEmit` | Zero errors ✓ |
-| `npx next build` | Clean ✓ |
-
----
-
-## Files Changed
-
-- `src/lib/parseRivhit.ts` — added `CREDIT_INVOICE_TYPE` constant
-- `src/components/CollectionsTable.tsx` — `tableRows` useMemo, redirected `bandFiltered`, fixed denominator
-- `src/components/CustomerPanel.tsx` — `selectAll` filter, credit DocCard early-return branch
-
----
-
-## Previous Task
-
-"במחלוקת" Dispute Status — Complete (2026-06-22, commit dfd5190)
-
----
-
-## Next Task
-
-To be defined by user.
+Session 2 — Supabase Auth integration in Next.js: login page, middleware, protected routes, session management.

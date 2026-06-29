@@ -80,6 +80,21 @@
 
 ---
 
+### Cloud Infrastructure — Session 1 Complete (2026-06-29)
+- [x] Supabase project provisioned — `pure-collections`, Frankfurt (eu-central-1)
+- [x] Auth configured — email/password, invite-only, 1-hour JWT
+- [x] Three users created: Avi (owner), Ben (owner), Clerk (clerk)
+- [x] Multi-tenant schema: `tenants`, `users`, `rivhit_credentials`, `document_statuses`, `customer_contacts`, `activity_log`, `sync_log`
+- [x] `tenants.features` (jsonb) for feature flags
+- [x] `tenants.outgoing_email` for business-level sender address
+- [x] RLS enabled on all 7 tables — 16 policies verified
+- [x] Vault functions for encrypted Rivhit token storage (`service_role` only)
+- [x] Supabase CLI installed; baseline migration committed to Git
+
+**Next:** Session 2 — Auth in Next.js (login page, middleware, protected routes)
+
+---
+
 ## Blockers
 
 None.

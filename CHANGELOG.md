@@ -11,6 +11,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.26.0] — 2026-06-29 — Cloud Foundation: Supabase Session 1
+
+### Added
+- Supabase project provisioned in eu-central-1 (Frankfurt) — project ref `rlkanhhisiftqgdeugvb`
+- Multi-tenant PostgreSQL schema: `tenants`, `users`, `rivhit_credentials`, `document_statuses`, `customer_contacts`, `activity_log`, `sync_log`
+- `tenants.features` (jsonb, default `{}`) — per-tenant feature flags for future gated capabilities
+- `tenants.outgoing_email` — business-level sender address, decoupled from individual user accounts
+- `user_role` enum: `owner`, `manager`, `clerk`
+- 9 performance indexes on all frequently-queried columns
+- Row Level Security enabled on all 7 tables — 16 policies enforce strict tenant isolation
+- `auth_tenant_id()` and `auth_user_role()` SECURITY DEFINER helper functions
+- `upsert_rivhit_token()` and `get_rivhit_token()` Vault functions — token stored encrypted server-side, never exposed to browser; restricted to `service_role` only
+- Three users seeded: Avi (owner), Ben (owner), Clerk (clerk) — all linked to `Pure Water Systems` tenant
+- `supabase` CLI installed as dev dependency
+- `supabase/migrations/20260629000000_initial_schema.sql` — baseline migration (idempotent, additive-only)
+
+---
+
 ## [0.25.0] — 2026-06-22 — Business-Days Today Follow-Up Grace Period
 
 ### Fixed
