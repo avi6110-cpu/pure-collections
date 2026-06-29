@@ -74,8 +74,9 @@ export function UploadForm({
   const fileRef  = useRef<File | null>(null);
 
   // ── Excel state ──────────────────────────────────────────────────────────────
-  const [selected,   setSelected]   = useState<SelectedFile | null>(null);
-  const [parseState, setParseState] = useState<ParseState>({ status: "idle" });
+  const [selected,        setSelected]        = useState<SelectedFile | null>(null);
+  const [parseState,      setParseState]      = useState<ParseState>({ status: "idle" });
+  const [confirmPending,  setConfirmPending]  = useState<{ rows: RivhitRow[]; rowCount: number } | null>(null);
 
   // ── API card state ───────────────────────────────────────────────────────────
   // showInput: false when a token is already stored (ready state); true when no token
@@ -105,6 +106,7 @@ export function UploadForm({
     fileRef.current = null;
     setSelected(null);
     setParseState({ status: "idle" });
+    setConfirmPending(null);
   }
 
   async function handleImport() {
@@ -120,13 +122,33 @@ export function UploadForm({
       const ws = wb.Sheets[wsName];
       if (!ws) throw new Error("גיליון ריק");
       const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][];
-      onImport(extractRivhitRows(rawRows));
+      const parsedRows = extractRivhitRows(rawRows);
+      // Require confirmation when replacing an existing workspace (onCancel present)
+      // or when the file produced zero valid document rows.
+      const needsConfirm = parsedRows.length === 0 || onCancel !== undefined;
+      if (needsConfirm) {
+        setConfirmPending({ rows: parsedRows, rowCount: parsedRows.length });
+        setParseState({ status: "idle" });
+        return;
+      }
+      onImport(parsedRows);
     } catch (err) {
       setParseState({
         status:  "error",
         message: err instanceof Error ? err.message : "שגיאה לא ידועה",
       });
     }
+  }
+
+  function confirmImport() {
+    if (!confirmPending) return;
+    const rows = confirmPending.rows;
+    setConfirmPending(null);
+    onImport(rows);
+  }
+
+  function cancelConfirm() {
+    setConfirmPending(null);
   }
 
   // ── API handlers ─────────────────────────────────────────────────────────────
@@ -394,24 +416,50 @@ export function UploadForm({
                   </div>
                 )}
 
-                <div className="mt-3 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => { void handleImport(); }}
-                    disabled={!isExcelValid || isExcelParsing}
-                    className="w-full rounded-lg bg-blue-600 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {isExcelParsing ? "מייבא..." : "ייבוא הקובץ"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearFile}
-                    disabled={isExcelParsing}
-                    className="w-full rounded-lg border border-gray-300 py-2 text-xs text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-40"
-                  >
-                    בחר קובץ אחר
-                  </button>
-                </div>
+                {confirmPending !== null ? (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <p className="text-xs text-amber-800">
+                      {confirmPending.rowCount === 0
+                        ? `⚠ הקובץ לא הכיל מסמכים תקינים. המשך ייבוא יחליף את הנתונים הנוכחיים בסביבת עבודה ריקה.`
+                        : `ייבוא "${selected?.name ?? ""}" (${confirmPending.rowCount} מסמכים) יחליף את כל הנתונים הנוכחיים.`}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={confirmImport}
+                        className="flex-1 rounded-lg bg-amber-600 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-700"
+                      >
+                        המשך בכל זאת
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelConfirm}
+                        className="flex-1 rounded-lg border border-gray-300 py-2 text-xs text-gray-600 transition-colors hover:bg-gray-50"
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => { void handleImport(); }}
+                      disabled={!isExcelValid || isExcelParsing}
+                      className="w-full rounded-lg bg-blue-600 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {isExcelParsing ? "מייבא..." : "ייבוא הקובץ"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearFile}
+                      disabled={isExcelParsing}
+                      className="w-full rounded-lg border border-gray-300 py-2 text-xs text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-40"
+                    >
+                      בחר קובץ אחר
+                    </button>
+                  </div>
+                )}
               </>
             )}
 

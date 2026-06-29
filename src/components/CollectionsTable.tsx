@@ -273,7 +273,7 @@ export function CollectionsTable({
           : -9999;
         return { ...r, ageDays, band: toBand(ageDays), daysUntilDue };
       }),
-    [rows]
+    [rows, todayStr]
   );
 
   // Actionable rows only — credit invoices are accounting context, not work items.
@@ -297,11 +297,15 @@ export function CollectionsTable({
   const summary = useMemo(() => {
     // Pass 1: net balance from full dataset
     let totalBalance       = 0;
+    let creditBalance      = 0;
     let todayFollowUpCount = 0;
     for (const r of enriched) {
       const docSt = statuses[docStatusKey(r)];
       if (isTodayFollowUp(docSt, todayStr)) todayFollowUpCount++;
-      if (docSt?.status !== "שולם") totalBalance += r.remainingBalance;
+      if (docSt?.status !== "שולם") {
+        totalBalance += r.remainingBalance;
+        if (r.documentType === CREDIT_INVOICE_TYPE) creditBalance += r.remainingBalance;
+      }
     }
 
     // Pass 2: band KPIs, queue counts, and approaching-overdue customers
@@ -325,6 +329,7 @@ export function CollectionsTable({
       activeRows,
       paidCount,
       totalBalance,
+      creditBalance,
       balanceFresh,  countFresh,
       balance30to60, count30to60,
       balance60plus, count60plus,
@@ -376,7 +381,7 @@ export function CollectionsTable({
         String(r.documentNumber).includes(q) ||
         r.documentType.toLowerCase().includes(q)
     );
-  }, [followUpFiltered, query]);
+  }, [approachingFiltered, query]);
 
   // 4. Sort, then push "שולם" rows to the bottom
   const displayed: EnrichedRow[] = useMemo(() => {
@@ -487,7 +492,10 @@ export function CollectionsTable({
         <div className="grid grid-cols-4 gap-4">
           <PrimaryCard
             value={fmtCurrency(summary.totalBalance)}
-            sub={`${summary.activeRows} פעילים${summary.paidCount > 0 ? ` · ${summary.paidCount} שולם` : ""}`}
+            sub={[
+              `${summary.activeRows} פעילים${summary.paidCount > 0 ? ` · ${summary.paidCount} שולם` : ""}`,
+              ...(summary.creditBalance < 0 ? [`כולל זיכויים: ${fmtCurrency(summary.creditBalance)}`] : []),
+            ].join(" · ")}
             onClick={() => handleFilterClick("all")}
           />
           <SecondaryCard
@@ -561,7 +569,7 @@ export function CollectionsTable({
             {filtersActive && (
               <button
                 type="button"
-                onClick={() => { setActiveFilter("all"); setActiveStatusFilter("all"); setTodayFollowUpFilter(false); setApproachingFilter(false); }}
+                onClick={() => { setQuery(""); setActiveFilter("all"); setActiveStatusFilter("all"); setTodayFollowUpFilter(false); setApproachingFilter(false); }}
                 className="mr-2 text-xs text-blue-600 hover:text-blue-800"
               >
                 נקה הכל

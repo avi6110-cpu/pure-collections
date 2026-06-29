@@ -92,6 +92,9 @@ export default function SettingsPage() {
       const data = (await res.json()) as RivhitResponse;
       if (res.status === 502) { setResult({ kind: "unreachable" }); return; }
       if (data.error_code === 0) {
+        writeSettings({ rivhitApiToken: token });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
         setResult({ kind: "success", typeCount: data.data?.document_type_list?.length ?? 0 });
       } else if (typeof data.error_code === "number") {
         setResult({ kind: "bad_token", message: data.client_message ?? "הבקשה נדחתה" });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EnrichedRow } from "@/types/collections";
 import { docStatusKey, CREDIT_INVOICE_TYPE, computeDueDate } from "@/lib/parseRivhit";
 import type { CustomerContact } from "@/types/contacts";
@@ -324,6 +324,16 @@ const STATUS_PILL: Record<CollectionStatus, { active: string; inactive: string }
 const ACTIVITY_ICON: Record<ActivityType, string>  = { status_changed: "◎", whatsapp_opened: "W", email_opened: "@", manual_note: "•" };
 const ACTIVITY_COLOR: Record<ActivityType, string> = { status_changed: "text-blue-500", whatsapp_opened: "text-green-600", email_opened: "text-gray-500", manual_note: "text-amber-500" };
 
+// Returns the most recent recorded dispute reason for a specific document, or
+// undefined when no reason was found (pre-existing disputes or no note entered).
+function findDisputeReason(doc: EnrichedRow, entries: ActivityEntry[]): string | undefined {
+  const prefix = `${doc.documentType} ${doc.documentNumber}: סומן כ׳במחלוקת׳:`;
+  const found = [...entries].reverse().find(
+    (e) => e.type === "status_changed" && e.text.startsWith(prefix)
+  );
+  return found ? found.text.slice(prefix.length).trim() : undefined;
+}
+
 // ── Props ───────────────────────────────────────────────────────────────────
 
 interface CustomerPanelProps {
@@ -380,6 +390,27 @@ export function CustomerPanel({
         .map(docKey)
     )
   );
+
+  // Track doc keys present at mount to detect genuinely new docs from API sync
+  const seenDocKeys = useRef(new Set<string>(customerRows.map(docKey)));
+
+  // Auto-select new eligible docs that appear while the panel is open (API sync)
+  useEffect(() => {
+    setSelectedDocs((prev) => {
+      const newKeys = customerRows
+        .filter((r) => {
+          if (seenDocKeys.current.has(docKey(r))) return false;
+          const s = statuses[docStatusKey(r)]?.status;
+          return s !== "שולם" && s !== "במחלוקת" && r.documentType !== CREDIT_INVOICE_TYPE;
+        })
+        .map(docKey);
+      if (newKeys.length === 0) return prev;
+      newKeys.forEach((k) => seenDocKeys.current.add(k));
+      const next = new Set(prev);
+      newKeys.forEach((k) => next.add(k));
+      return next;
+    });
+  }, [customerRows, statuses]);
 
   const customerName = clickedRow?.customerName ?? "";
 
@@ -493,6 +524,7 @@ export function CustomerPanel({
                   onPreview={onPreview}
                   onAddActivity={onAddActivity}
                   todayStr={todayStr}
+                  disputeReason={statuses[docStatusKey(doc)]?.status === "במחלוקת" ? findDisputeReason(doc, activityEntries) : undefined}
                 />
               ))}
             </div>
@@ -514,6 +546,7 @@ export function CustomerPanel({
             paidCount={paidDocs.length}
             maxAgeDays={maxAgeDays}
             balance60plus={balance60plus}
+            hasCreditInvoices={hasCreditInvoices}
           />
 
           {/* ── 5. Activity log ───────────────────────────────────────────── */}
@@ -666,14 +699,15 @@ function CompactHeader({ customerName, contact, onSaveContact, onClose }: Compac
 // Compact single-row strip replacing the old 2×2 grid.
 
 interface SummaryStripProps {
-  totalBalance:  number;
-  docCount:      number;
-  paidCount:     number;
-  maxAgeDays:    number;
-  balance60plus: number;
+  totalBalance:      number;
+  docCount:          number;
+  paidCount:         number;
+  maxAgeDays:        number;
+  balance60plus:     number;
+  hasCreditInvoices: boolean;
 }
 
-function SummaryStrip({ totalBalance, docCount, paidCount, maxAgeDays, balance60plus }: SummaryStripProps) {
+function SummaryStrip({ totalBalance, docCount, paidCount, maxAgeDays, balance60plus, hasCreditInvoices }: SummaryStripProps) {
   const docsValue = paidCount > 0 ? `${docCount} + ${paidCount}✓` : String(docCount);
   return (
     <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-2.5">
@@ -683,6 +717,9 @@ function SummaryStrip({ totalBalance, docCount, paidCount, maxAgeDays, balance60
         <StatChip label="פיגור מרבי"   value={`${maxAgeDays} יום`} />
         <StatChip label="60+ יום"       value={balance60plus > 0 ? fmtCurrency(balance60plus) : "—"} danger={balance60plus > 0} />
       </div>
+      {hasCreditInvoices && (
+        <p className="mt-1.5 text-center text-[9px] text-gray-400">יתרה פעילה כוללת זיכויים · יתרה ברוטו גבוהה יותר</p>
+      )}
     </div>
   );
 }
@@ -889,9 +926,10 @@ interface DocCardProps {
   onPreview:          (documentType: string, documentNumber: number) => void;
   onAddActivity:      (customerName: string, type: ActivityType, text: string) => void;
   todayStr:           string;
+  disputeReason?:     string | undefined;
 }
 
-function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate, onPreview, onAddActivity, todayStr }: DocCardProps) {
+function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus, onSaveExpectedDate, onPreview, onAddActivity, todayStr, disputeReason }: DocCardProps) {
   const [statusOpen,      setStatusOpen]      = useState(false);
   const [disputeNoteMode, setDisputeNoteMode] = useState(false);
   const [disputeNote,     setDisputeNote]     = useState("");
@@ -1014,6 +1052,11 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
           </div>
         </div>
 
+        {/* Dispute reason — visible on the card so the clerk doesn't need to scroll the activity log */}
+        {isDisputed && disputeReason && (
+          <p className="mt-1.5 text-xs text-orange-700">{disputeReason}</p>
+        )}
+
         {/* Row 3: per-document status picker */}
         <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
           {statusOpen ? (
@@ -1024,7 +1067,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
                 <textarea
                   value={disputeNote}
                   onChange={(e) => setDisputeNote(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Escape") { setDisputeNote(""); setDisputeNoteMode(false); setStatusOpen(false); } }}
+                  onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setDisputeNote(""); setDisputeNoteMode(false); setStatusOpen(false); } }}
                   placeholder="מה טוען הלקוח?"
                   rows={2}
                   autoFocus
@@ -1037,7 +1080,7 @@ function DocCard({ doc, isClicked, isSelected, onToggle, docStatus, onSaveStatus
                     onClick={() => {
                       const note = disputeNote.trim();
                       onSaveStatus(statusKey, "במחלוקת");
-                      onAddActivity(doc.customerName, "status_changed", `סומן כ׳במחלוקת׳: ${note}`);
+                      onAddActivity(doc.customerName, "status_changed", `${doc.documentType} ${doc.documentNumber}: סומן כ׳במחלוקת׳: ${note}`);
                       setDisputeNote("");
                       setDisputeNoteMode(false);
                       setStatusOpen(false);
