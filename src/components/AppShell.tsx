@@ -21,6 +21,10 @@ import {
   upsertCloudContact,
   upsertCloudContacts,
 } from "@/lib/supabase/contacts";
+import {
+  fetchCloudStatuses,
+  upsertCloudStatus,
+} from "@/lib/supabase/statuses";
 
 const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
@@ -178,7 +182,6 @@ export function AppShell({ user }: { user: AppUser }) {
   useEffect(() => {
     async function init() {
       const stored      = readReport();
-      const statuses    = readStatuses();
       const activityLog = readActivity();
 
       // Cloud-first contacts with localStorage fallback
@@ -187,6 +190,14 @@ export function AppShell({ user }: { user: AppUser }) {
       if (cloudContacts !== null) {
         contacts = cloudContacts;
         writeContacts(contacts); // keep localStorage cache in sync
+      }
+
+      // Cloud-first statuses with localStorage fallback
+      let statuses = readStatuses();
+      const cloudStatuses = await fetchCloudStatuses();
+      if (cloudStatuses !== null) {
+        statuses = cloudStatuses;
+        writeStatuses(statuses); // keep localStorage cache in sync
       }
 
       startTransition(() => {
@@ -373,6 +384,11 @@ export function AppShell({ user }: { user: AppUser }) {
     };
     const statuses: StatusMap = { ...state.statuses, [docKey]: newEntry };
     if (!writeStatuses(statuses)) { setIoError("נכשלה שמירת הסטטוס — נפח האחסון מלא"); return; }
+    // Cloud dual-write — non-blocking
+    void upsertCloudStatus(docKey, newEntry, user.id, user.tenantId)
+      .then((ok) => {
+        if (!ok) setIoError("הסטטוס נשמר מקומית — לא ניתן לשמור בענן כרגע");
+      });
 
     let activityLog = state.activityLog;
     if (prevStatus !== status) {
@@ -408,6 +424,11 @@ export function AppShell({ user }: { user: AppUser }) {
     const statuses: StatusMap = { ...state.statuses, [docKey]: newEntry };
     if (!writeStatuses(statuses)) { setIoError("נכשלה שמירת תאריך התשלום — נפח האחסון מלא"); return; }
     setState({ ...state, statuses });
+    // Cloud dual-write — non-blocking; shares the same upsert as handleSaveStatus
+    void upsertCloudStatus(docKey, newEntry, user.id, user.tenantId)
+      .then((ok) => {
+        if (!ok) setIoError("תאריך התשלום נשמר מקומית — לא ניתן לשמור בענן כרגע");
+      });
   }
 
   function handleAddActivity(customerName: string, type: ActivityType, text: string) {
