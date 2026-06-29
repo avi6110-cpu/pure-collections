@@ -13,6 +13,9 @@ import { isTodayFollowUp, todayDateStr } from "@/lib/followUp";
 import { isApproachingDue } from "@/lib/approaching";
 import { CustomerPanel } from "@/components/CustomerPanel";
 import { DocumentPreviewModal, EyeIcon } from "@/components/DocumentPreviewModal";
+import type { AppUser } from "@/types/auth";
+import { ROLE_LABEL } from "@/types/auth";
+import { signOut } from "@/app/actions/auth";
 import type { ImportSource, SyncStats } from "@/components/AppShell";
 
 // Refreshes today's date string when the browser tab becomes visible after
@@ -197,6 +200,7 @@ function SecondaryCard({ label, value, count, variant, onClick, isActive }: Seco
 // ── Main component ──────────────────────────────────────────────────────────
 
 interface CollectionsTableProps {
+  user: AppUser;
   rows: RivhitRow[];
   importedAt:   number;
   importSource: ImportSource;
@@ -215,6 +219,7 @@ interface CollectionsTableProps {
 }
 
 export function CollectionsTable({
+  user,
   rows,
   importedAt,
   importSource,
@@ -436,6 +441,22 @@ export function CollectionsTable({
             >
               הגדרות
             </Link>
+            <span className="text-gray-200">|</span>
+            <span className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">
+                {user.fullName || user.email}
+                <span className="mx-1 text-gray-300">·</span>
+                <span className="text-gray-400">{ROLE_LABEL[user.role]}</span>
+              </span>
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  className="rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                >
+                  יציאה
+                </button>
+              </form>
+            </span>
             <button
               type="button"
               onClick={onNewImport}

@@ -15,6 +15,7 @@ import {
   parseCustomerList,
 } from "@/lib/parseRivhitApi";
 import type { ApiContactFields } from "@/lib/parseRivhitApi";
+import type { AppUser } from "@/types/auth";
 
 const REPORT_KEY   = "pure-collections:report";
 const CONTACTS_KEY = "pure-collections:contacts";
@@ -172,7 +173,7 @@ function readToken(): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function AppShell() {
+export function AppShell({ user }: { user: AppUser }) {
   const [state,     setState]     = useState<AppState>({ mode: "loading" });
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -441,6 +442,7 @@ export function AppShell() {
     <>
       {storageErrorBanner}
       <CollectionsTable
+        user={user}
         rows={state.rows}
         importedAt={state.importedAt}
         importSource={state.importSource}
