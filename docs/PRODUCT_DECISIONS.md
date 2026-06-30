@@ -4,7 +4,7 @@
 > Once recorded here, a decision should not be reversed without an explicit new entry.
 > For current status see [MASTER_STATUS.md](./MASTER_STATUS.md).
 
-Last Updated: 2026-06-18
+Last Updated: 2026-06-30
 
 ---
 
@@ -22,6 +22,7 @@ Last Updated: 2026-06-18
 10. [Future Cloud Isolation Requirements](#10-future-cloud-isolation-requirements)
 11. [Business Support Approach](#11-business-support-approach)
 12. [Future Connector Architecture](#12-future-connector-architecture)
+13. [SaaS Authentication — Explicit Business Identity](#13-saas-authentication--explicit-business-identity)
 
 ---
 
@@ -199,3 +200,35 @@ Planned connectors:
 **Current state:** The connector abstraction does not exist yet. `importSource: "api" | "excel"` is the only distinction today. When a third source is added, this must be refactored to a proper connector pattern.
 
 **Status:** Architectural intent, not yet implemented.
+
+---
+
+## 13. SaaS Authentication — Explicit Business Identity
+
+**Decision:** In the commercial SaaS version, users must explicitly identify the business they are signing into as part of the authentication flow, in addition to their email and password.
+
+**Rationale:**
+- A single email address may belong to users across multiple independent tenants (e.g. an accountant managing several businesses, or a clerk who switches employers).
+- Relying solely on email for tenant resolution creates accidental cross-tenant login risk.
+- Explicit business identification simplifies onboarding, support, and future self-service registration by making the tenant boundary visible to the user.
+
+**UX approach — intentionally open for future design.** Candidate approaches include:
+- Company Registration Number (ח.פ / ע.מ — Israeli business registry)
+- Business Code (short human-readable identifier)
+- Organization Slug (URL-friendly name, e.g. `acme`)
+- Company Identifier (internal UUID or assigned code)
+
+The exact mechanism will be decided during SaaS product design. The constraint is that the tenant must be explicitly chosen by the user, not inferred from email domain or session history.
+
+**Goals:**
+- Support many independent businesses on the same platform with zero data cross-contamination.
+- Reduce accidental login to the wrong tenant.
+- Enable self-service business registration in the future without requiring vendor intervention.
+- Keep tenant selection transparent and auditable.
+
+**Constraints:**
+- Do NOT change the current login flow before or during the pilot.
+- The pilot runs on single-tenant email/password login — this decision applies only to the future multi-tenant SaaS product.
+- The database schema already supports this: `tenants` table exists, and `users.tenant_id` enforces the association at the data layer. The login UX is the only missing piece.
+
+**Status:** Future product decision. Not in scope until post-pilot SaaS planning.
