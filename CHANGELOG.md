@@ -11,6 +11,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.28.0] — 2026-06-30 — Production Deployment to Vercel
+
+### Added
+- Vercel project `pure-collections/pure-collections` created and linked to GitHub
+- Production URL: https://pure-collections.vercel.app
+- Three encrypted environment variables set in Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
+- Supabase Auth redirect URLs updated to production domain
+- `.env.local` on home machine updated to new Supabase API key variable names (`PUBLISHABLE_KEY` / `SECRET_KEY`)
+- `.env*` added to `.gitignore` (Vercel CLI addition — broader catch-all alongside existing specific entries)
+
+### Verified
+- Automated production smoke test: 7/7 checks pass (redirect, login page, Hebrew content, route protection ×2, API 401, callback)
+- Manual production verification: login, workspace, Settings, Vault token hint, Rivhit connection test, Sync to Cloud — all working
+
+---
+
+## [0.27.0] — 2026-06-30 — Pilot Readiness QA
+
+### Added
+- Playwright smoke suite: `playwright.config.ts`, `tests/pilot-qa.spec.ts`
+- 15 automated tests across two isolated browser contexts (Ben/owner, Clerk/clerk)
+
+### Fixed
+- Missing `GRANT` statements for `authenticated` and `service_role` on all 7 tables — PostgreSQL was returning error 42501 before RLS was evaluated
+- Migration file updated with complete table-privilege section
+- Supabase API key format migrated to new `sb_publishable_` / `sb_secret_` format
+
+---
+
 ## [0.26.0] — 2026-06-29 — Cloud Foundation: Supabase Session 1
 
 ### Added

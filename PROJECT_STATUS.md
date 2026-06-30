@@ -116,7 +116,15 @@
 - [x] Migration file updated with complete table-privilege section
 - [x] All 15 tests pass: server health, auth, migration, DB verification, cross-user sync, sign-out
 
-**Status: PILOT READY** — the system is cleared for the clerk pilot.
+### Production Deployment — Complete (2026-06-30)
+- [x] Vercel project created: `pure-collections/pure-collections`
+- [x] Production URL: **https://pure-collections.vercel.app**
+- [x] Three env vars set in Vercel (encrypted): Supabase URL, Publishable Key, Secret Key
+- [x] Supabase Auth redirect URLs updated to production domain
+- [x] Automated production smoke test: 7/7 checks passed
+- [x] Manual verification passed: login, workspace, Settings, Vault hint, Rivhit connection, Sync to Cloud
+
+**Status: LIVE IN PRODUCTION** — ready for tomorrow's clerk pilot.
 
 ---
 

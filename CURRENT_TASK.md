@@ -1,6 +1,6 @@
 # CURRENT TASK
 
-## Pilot Readiness — Multi-User Smoke Test
+## Production Deployment to Vercel
 
 **Status:** Complete ✅
 **Completed:** 2026-06-30
@@ -9,45 +9,21 @@
 
 ## Context
 
-Sessions 2 and 3 are complete. The app now:
-- Requires login (Supabase auth, middleware-protected routes)
-- Stores the Rivhit API token in Supabase Vault (never in browser)
-- Reads and writes contacts, statuses, and activity log to Supabase (cloud-first, localStorage fallback)
-- Has a one-time bulk migration tool at `/settings` to push existing localStorage data to cloud
+Following successful 15/15 Pilot Readiness QA, the app was deployed to Vercel for the clerk pilot.
 
-Three user accounts (Avi, Ben, Clerk) were created in Session 1 and are ready.
+## What Was Done
 
-The only remaining gate before the clerk pilot is a live multi-user smoke test confirming that two users on the same tenant see each other's writes in real time.
+- Vercel CLI installed and authenticated
+- Vercel project created: `pure-collections/pure-collections`
+- Three production environment variables set (encrypted): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
+- Production deployment succeeded — clean build, 21 routes
+- Supabase Auth redirect URLs updated to production domain
+- Automated smoke test: 7/7 checks passed
+- Manual production verification passed: login, workspace, Settings, Vault token hint, Rivhit connection test, Sync to Cloud — all working
 
----
+## Production URL
 
-## Smoke Test Plan
-
-### Setup
-- Avi logged in on Browser A
-- Clerk logged in on Browser B (or a different device)
-- Both see the same collections report (imported from the same data source)
-
-### Tests to run
-
-| # | Action | Expected |
-|---|--------|----------|
-| 1 | Clerk runs bulk migration at `/settings` | Existing localStorage data appears in Supabase |
-| 2 | Avi sets a document status → Clerk refreshes | Clerk sees the updated status |
-| 3 | Clerk saves a contact note → Avi refreshes | Avi sees the updated contact |
-| 4 | Avi adds a manual activity note → Clerk refreshes | Clerk sees the activity entry |
-| 5 | Avi saves a status → Clerk sets it to something different within seconds | Newer write wins; both users end up consistent after next refresh |
-| 6 | Both users online simultaneously → one user changes status | Other user sees the change after their next load/refresh |
-
-### Pass criteria
-All 6 tests pass with no data loss, no duplicate entries, and no ioError banners on either device under normal conditions.
-
----
-
-## Optional (low priority, can do post-pilot)
-
-- Session 3.5 — sync log metadata: write to `sync_log` table on API sync
-- Activity log pagination: time-windowed fetch if tenant accumulates large history
+**https://pure-collections.vercel.app**
 
 ---
 
@@ -62,3 +38,4 @@ All 6 tests pass with no data loss, no duplicate entries, and no ioError banners
 | Session 3.3 — Activity Log cloud migration | Complete | 2026-06-29 |
 | Session 3.4 — Bulk migration tool | Complete | 2026-06-29 |
 | Pilot Readiness QA — 15-test automated smoke suite | Complete | 2026-06-30 |
+| Production Deployment to Vercel | Complete | 2026-06-30 |
