@@ -247,6 +247,29 @@ CREATE POLICY "sync_log: insert own tenant"
     created_by = auth.uid()
   );
 
+-- ── Table privileges ─────────────────────────────────────────────────────────
+-- PostgREST requires explicit table-level grants before RLS is evaluated.
+-- Without these, authenticated queries return code 42501 (permission denied).
+-- anon role is excluded — the middleware redirects unauthenticated users to /login.
+
+-- authenticated: PostgREST queries from logged-in browser/server sessions
+GRANT SELECT                         ON public.tenants            TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.users              TO authenticated;
+GRANT SELECT, INSERT, UPDATE         ON public.rivhit_credentials  TO authenticated;
+GRANT SELECT, INSERT, UPDATE         ON public.document_statuses   TO authenticated;
+GRANT SELECT, INSERT, UPDATE         ON public.customer_contacts   TO authenticated;
+GRANT SELECT, INSERT                 ON public.activity_log        TO authenticated;
+GRANT SELECT, INSERT                 ON public.sync_log            TO authenticated;
+
+-- service_role: admin client (sb_secret_* key) — bypasses RLS, used by server jobs
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.tenants            TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.users              TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.rivhit_credentials TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.document_statuses  TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_contacts  TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.activity_log       TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sync_log           TO service_role;
+
 -- ── Vault functions ───────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION upsert_rivhit_token(

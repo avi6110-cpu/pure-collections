@@ -109,7 +109,14 @@
 - [x] Session 3.3 — Activity log (including dispute notes): cloud-first read, shared `saveActivity` helper, `ON CONFLICT (id) DO NOTHING` insert
 - [x] Session 3.4 — Bulk migration tool: `POST /api/migrate/bulk` (idempotent, newer-wins for contacts/statuses, UUID-based dedup for activity); migration card in `/settings`
 
-**Next:** Multi-user smoke test (see `CURRENT_TASK.md`) — then clerk pilot.
+### Pilot Readiness QA — Complete (2026-06-30)
+- [x] Playwright smoke suite installed — `playwright.config.ts`, `tests/pilot-qa.spec.ts`
+- [x] 15 automated tests across two isolated browser contexts (Ben/owner, Clerk/clerk)
+- [x] Root cause found and fixed: missing `GRANT` statements for `authenticated` and `service_role` roles on all 7 tables — PostgreSQL returned code 42501 before RLS was ever evaluated
+- [x] Migration file updated with complete table-privilege section
+- [x] All 15 tests pass: server health, auth, migration, DB verification, cross-user sync, sign-out
+
+**Status: PILOT READY** — the system is cleared for the clerk pilot.
 
 ---
 
