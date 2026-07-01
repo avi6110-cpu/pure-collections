@@ -11,6 +11,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.29.0] — 2026-07-01 — Pilot UX Fixes
+
+### Fixed
+- **Escape in contact edit form no longer closes the CustomerPanel** — `onKeyDown` on the edit wrapper stops propagation before the document-level Escape handler fires; pressing Escape now dismisses the edit form only, preserving the open panel and document selection (`CustomerPanel.tsx`)
+- **Logout button requires confirmation** — `window.confirm("לצאת מהמערכת?")` added to the sign-out form's `onSubmit`; cancelling the dialog aborts the sign-out (`CollectionsTable.tsx`)
+
+---
+
 ## [0.28.0] — 2026-06-30 — Production Deployment to Vercel
 
 ### Added
