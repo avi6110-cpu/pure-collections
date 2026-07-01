@@ -11,13 +11,14 @@
 
 UX review identified three findings; two confirmed fixes were approved and implemented:
 
-1. **Escape in contact edit closes panel** (confirmed bug) — fixed with `onKeyDown` + `stopPropagation` on the `CompactHeader` edit form wrapper. Escape now cancels the edit only; the panel and document selection are unaffected.
+1. **Escape in contact edit closes panel** (confirmed bug) — fixed with `data-contact-edit-form` attribute on the edit wrapper + `e.target.closest()` guard in CustomerPanel's document Escape handler. Escape now cancels the edit only; the panel and document selection are unaffected. (Initial `stopPropagation`-only approach was insufficient against native `document.addEventListener` in Next.js App Router — corrected in `29329f9`.)
 2. **Logout button has no confirmation** (UX improvement) — fixed with `window.confirm` on the sign-out form's `onSubmit`. One accidental click can no longer sign the clerk out.
 
 Third finding (email/WhatsApp activity logged on client open, not on send) deferred — to be observed during clerk pilot before changing log semantics.
 
-Commit: `62c3a17`
-Deployed: via GitHub push (Vercel auto-deploy) — verify at vercel.com dashboard.
+Commits: `62c3a17` (logout confirm + initial Escape fix), `29329f9` (robust Escape fix)
+Deployed: manually via Vercel CLI — Vercel GitHub auto-deploy is NOT configured.
+Production verified: both fixes confirmed live via Chrome browser testing.
 
 ---
 

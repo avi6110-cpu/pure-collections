@@ -14,7 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.29.0] — 2026-07-01 — Pilot UX Fixes
 
 ### Fixed
-- **Escape in contact edit form no longer closes the CustomerPanel** — `onKeyDown` on the edit wrapper stops propagation before the document-level Escape handler fires; pressing Escape now dismisses the edit form only, preserving the open panel and document selection (`CustomerPanel.tsx`)
+- **Escape in contact edit form no longer closes the CustomerPanel** — Edit form wrapper gets `data-contact-edit-form` attribute; CustomerPanel's document Escape handler checks `e.target.closest('[data-contact-edit-form]')` and skips `onClose()` when focus is inside the edit form. The wrapper's `onKeyDown` still closes the form itself. (React synthetic `stopPropagation` alone was insufficient to block a native `document.addEventListener` in Next.js App Router.) (`CustomerPanel.tsx`)
 - **Logout button requires confirmation** — `window.confirm("לצאת מהמערכת?")` added to the sign-out form's `onSubmit`; cancelling the dialog aborts the sign-out (`CollectionsTable.tsx`)
 
 ---
