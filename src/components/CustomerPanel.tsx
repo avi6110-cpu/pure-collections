@@ -594,7 +594,10 @@ function CompactHeader({ customerName, contact, onSaveContact, onClose }: Compac
 
   if (isEditing) {
     return (
-      <div className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-4">
+      <div
+        className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-4"
+        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setIsEditing(false); } }}
+      >
         <div className="mb-3 flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">עריכת פרטי קשר</p>
           <button type="button" onClick={() => setIsEditing(false)} className="text-xs text-gray-500 hover:text-gray-700">ביטול</button>

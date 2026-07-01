@@ -448,7 +448,10 @@ export function CollectionsTable({
                 <span className="mx-1 text-gray-300">·</span>
                 <span className="text-gray-400">{ROLE_LABEL[user.role]}</span>
               </span>
-              <form action={signOut}>
+              <form
+                action={signOut}
+                onSubmit={(e) => { if (!window.confirm("לצאת מהמערכת?")) e.preventDefault(); }}
+              >
                 <button
                   type="submit"
                   className="rounded px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600"
