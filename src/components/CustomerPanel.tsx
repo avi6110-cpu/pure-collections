@@ -353,10 +353,15 @@ export function CustomerPanel({
 }: CustomerPanelProps) {
   const todayStr = useTodayStr();
 
-  // Close on Escape
+  // Close on Escape — but not when focus is inside the contact edit form,
+  // which handles Escape itself to cancel editing without closing the panel.
   useEffect(() => {
     if (!clickedRow) return;
-    function handleKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if ((e.target as Element | null)?.closest("[data-contact-edit-form]")) return;
+      onClose();
+    }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [clickedRow, onClose]);
@@ -595,6 +600,7 @@ function CompactHeader({ customerName, contact, onSaveContact, onClose }: Compac
   if (isEditing) {
     return (
       <div
+        data-contact-edit-form
         className="shrink-0 border-b border-gray-200 bg-gray-50 px-5 py-4"
         onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setIsEditing(false); } }}
       >
