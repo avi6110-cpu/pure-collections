@@ -127,10 +127,47 @@ No automatic promotion. This is the one gate that stays manual permanently — i
 Per approval on 2026-07-02, this is being built incrementally, not all at once. Each step requires separate sign-off:
 
 1. ✅ Document this workflow (this file).
-2. 🔄 **Current step:** Create and verify an isolated Supabase Staging project. No Vercel changes, no production changes, no git restructuring.
+2. ✅ **Done (2026-07-02):** Isolated Supabase Staging project created and verified (`pure-collections-staging`, ref `nfrecdfkogznwtwlvkoe`). No Vercel changes, no production changes, no git restructuring.
+2.5. ✅ **Done (2026-07-02):** Local development (`npm run dev`) switched to Staging Supabase via `.env.development.local` — `.env.local` (production) left untouched.
 3. ⏳ Not yet approved: Git branch restructuring (`develop`, branch protection).
 4. ⏳ Not yet approved: Vercel environment wiring (branch env vars, GitHub auto-deploy).
 5. ⏳ Not yet approved: CI pipeline (GitHub Actions).
 6. ⏳ Not yet approved: Formal promotion process end-to-end.
 
 See [CURRENT_TASK.md](../CURRENT_TASK.md) for live status.
+
+---
+
+## Daily Workflow (Target State)
+
+**Read this section together with the Rollout Order above.** It describes how work will flow once steps 3–6 are complete. As of step 2.5, local development (`npm run dev`) already runs against Staging Supabase (see Local Development below — this part is live). There is still only one git branch (`master`), no CI, and deploys are still manual. Do not assume the Staging/Production sections below are live until `CURRENT_TASK.md` says so.
+
+### Local Development — LIVE as of 2026-07-02
+- Work happens on a `feature/*` branch cut from `develop` (branch structure itself not yet implemented — for now, work continues on `master` until step 3 is approved).
+- `npm run dev` reads `.env.development.local` (gitignored), which Next.js loads with higher precedence than `.env.local` — so local dev always targets the Staging Supabase project. `.env.local` still holds production credentials but is shadowed during `next dev`; it remains authoritative for `next build`/`next start`.
+- Test data can be freely created and destroyed against staging.
+- To deliberately test against production locally (rare, intentional): temporarily rename `.env.development.local` aside, run `npm run dev`, rename it back afterward.
+
+### Staging
+- Open a PR from `feature/*` into `develop`. CI runs lint/build/tests automatically.
+- Merging to `develop` auto-deploys to a fixed Staging URL on Vercel, backed by the Staging Supabase project.
+- Manual QA and the Playwright regression suite run here, against synthetic data. New integrations (WhatsApp Business, Email, future modules) are built and exercised here first, using sandbox/test credentials — real provider accounts never touch staging.
+
+### Production
+- Once staging is verified, open a `develop → master` PR — this PR **is** the release.
+- Merging triggers a Production deploy from `master`, backed by the production Supabase project.
+- Any database migration is applied to production as a separate, explicit, manual step — only after it has already been proven on staging, never bundled silently into the deploy.
+- Rollback = promote a previous Vercel deployment (near-instant, zero downtime). Migrations stay backward-compatible (expand/contract) so a rollback never lands on a schema the old code can't read.
+
+### Example: A New Feature, Idea → Production (WhatsApp Business)
+
+1. **Idea** — written up in `docs/PRODUCT_DECISIONS.md` or `docs/NEXT_ACTIONS.md`. No code yet.
+2. **Branch** — `feature/whatsapp-business`, cut from `develop`.
+3. **Build against staging** — WhatsApp Business *sandbox/test* number, staging Supabase project, synthetic contacts. Real WhatsApp Business credentials never appear on this branch.
+4. **PR → `develop`** — CI runs; Vercel generates a Preview URL for review.
+5. **Merge → `develop`** — auto-deploys to Staging. Full manual QA: send test messages through the sandbox number, confirm activity log entries write correctly, confirm zero interaction with real customers.
+6. **PR `develop` → `master`** — the release candidate. Review the diff, confirm staging QA passed, confirm any migration already ran cleanly on staging.
+7. **Merge → Production deploy.** Only now do real WhatsApp Business API credentials get added — as a distinct, explicit, approved step, piped in the same secure way production credentials have always been handled in this project, never pasted into chat.
+8. **Monitor** first real usage via Vercel/Supabase logs. Rollback path is a one-click Vercel deployment promote if anything's wrong.
+
+This same eight-step shape applies to any future module (Email, new integrations, etc.) — only the sandbox-credential specifics change per integration.

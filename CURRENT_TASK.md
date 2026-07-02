@@ -25,7 +25,15 @@ Explicitly NOT yet approved: Vercel production env var changes, production Supab
 - Isolation verified: distinct project ref from prod, `.env.local` (prod) untouched, staging REST endpoint returns HTTP 200 with RLS enforced (no data without auth), no prod ref found anywhere in staging config
 - No Vercel changes, no production Supabase changes, no git branch changes made in this step
 
-Next steps (3–6: Git branch restructuring, Vercel environment wiring, CI, formal promotion process) remain **not approved** and will not begin without separate sign-off.
+**Step 2.5 — done (2026-07-02):** Local development switched from Production Supabase to Staging Supabase.
+- `.env.local` (production) left completely unmodified — verified by unchanged mtime
+- New `.env.development.local` (gitignored) created with staging URL, publishable key, and secret key — Next.js loads this ahead of `.env.local` automatically during `npm run dev` (documented precedence, confirmed live: dev server startup log read `Environments: .env.development.local, .env.local`)
+- Verified at runtime: staging project ref `nfrecdfkogznwtwlvkoe` found baked into the client JS bundle in place of the production ref `rlkanhhisiftqgdeugvb`
+- Secret key fetched via Supabase CLI and written directly to file — never printed to any transcript or log
+- No `.env*` file committed; no Vercel or production Supabase changes made
+- To deliberately test against production locally: temporarily rename `.env.development.local` aside, run `npm run dev`, rename back afterward (documented in `docs/DEVELOPMENT_WORKFLOW.md`)
+
+Next steps (3, 4 remainder, 5, 6: Git branch restructuring, Vercel environment wiring, CI, formal promotion process) remain **not approved** and will not begin without separate sign-off.
 
 ---
 
