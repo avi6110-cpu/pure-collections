@@ -1,5 +1,34 @@
 # CURRENT TASK
 
+## Long-Term Environment Architecture (Session 5)
+
+**Status:** In Progress
+**Started:** 2026-07-02
+
+---
+
+## What's Approved
+
+Full target-state design documented in [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md), approved in principle by Avi on 2026-07-02, to be built **incrementally** — each step requires separate sign-off.
+
+Explicitly NOT yet approved: Vercel production env var changes, production Supabase data/schema changes, production deployment changes, Git branch restructuring, auto-deploy, CI setup.
+
+## Current Checkpoint
+
+**Step 1 of 6 — done:** Long-term workflow documented (`docs/DEVELOPMENT_WORKFLOW.md`).
+
+**Step 2 of 6 — done (2026-07-02):** Created and verified a fully isolated Supabase Staging project.
+- Project: `pure-collections-staging`, ref `nfrecdfkogznwtwlvkoe`, Frankfurt (eu-central-1), same org as prod (`pure water systems`)
+- Baseline migration (`20260629000000_initial_schema.sql`) applied and confirmed tracked remotely
+- Local Supabase CLI authenticated via `npx supabase login` (browser OAuth, run by Avi in his own terminal) and linked to the staging project only — prod remains unlinked
+- Credentials: staging URL + publishable key written to new `.env.staging.local` (gitignored); secret key was never fetched/printed; a one-time DB password was generated locally to create the project, then deleted after use
+- Isolation verified: distinct project ref from prod, `.env.local` (prod) untouched, staging REST endpoint returns HTTP 200 with RLS enforced (no data without auth), no prod ref found anywhere in staging config
+- No Vercel changes, no production Supabase changes, no git branch changes made in this step
+
+Next steps (3–6: Git branch restructuring, Vercel environment wiring, CI, formal promotion process) remain **not approved** and will not begin without separate sign-off.
+
+---
+
 ## Pilot UX Fixes (Session 4)
 
 **Status:** Complete ✅
